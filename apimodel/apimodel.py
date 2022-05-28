@@ -5,6 +5,8 @@ import typing
 
 from . import fields, tutils, utility, validation
 
+__all__ = ["APIModel"]
+
 ValidatorT = typing.TypeVar("ValidatorT", bound=validation.BaseValidator)
 APIModelT = typing.TypeVar("APIModelT", bound="APIModel")
 
@@ -48,7 +50,7 @@ class APIModelMeta(type):
                 for field_name in obj._fields:
                     self.__fields__[field_name].add_validators(obj)
             elif isinstance(obj, fields.ExtraInfo):
-                obj.name = obj.name or name
+                obj.name = obj.name or name.lstrip("_")
                 self.__extras__[name] = obj
 
         self.__root_validators__.sort(key=lambda v: v.order)
@@ -69,12 +71,14 @@ class APIModelMeta(type):
             or any(validator.isasync for validator in self.__root_validators__)
         )
 
+    @utility.as_universal
     def _validate_universal(
         self,
         obj: tutils.JSONMapping,
         *,
         instance: typing.Optional[APIModel] = None,
-    ) -> typing.Generator[tutils.MaybeAwaitable[tutils.JSONMapping], tutils.JSONMapping, tutils.JSONMapping]:
+        extras: bool = False,
+    ) -> tutils.UniversalAsyncGenerator[tutils.JSONMapping]:
         """Universal validation.
 
         This method is used by both sync and async validation.
@@ -102,11 +106,12 @@ class APIModelMeta(type):
                 setattr(instance, attr_name, obj[field.name])
                 new_obj[attr_name] = obj[field.name]
 
-        for attr_name, extra in self.__extras__.items():
-            if extra.name not in obj:
-                raise TypeError(f"Missing required extra attribute {extra.name}.")
+        if extras:
+            for attr_name, extra in self.__extras__.items():
+                if extra.name not in obj:
+                    raise TypeError(f"Missing required extra attribute {extra.name}.")
 
-            setattr(instance, attr_name, obj[extra.name])
+                setattr(instance, attr_name, obj[extra.name])
 
         obj = new_obj
 
@@ -133,57 +138,33 @@ class APIModelMeta(type):
 
         return obj
 
-    def validate_model_sync(
+    def validate_sync(
         self,
         obj: tutils.JSONMapping,
         *,
         instance: typing.Optional[APIModel] = None,
+        extras: bool = False,
     ) -> tutils.JSONMapping:
         """Validate a mapping synchronously.
 
         Returns the validated mapping.
         If an instance is not passed in, a dummy instance will be created.
         """
-        generator = self._validate_universal(obj, instance=instance)
-        value = generator.__next__()
+        return self._validate_universal.synchronous(self, obj, instance=instance, extras=extras)
 
-        while True:
-            try:
-                if isinstance(value, typing.Awaitable):
-                    raise TypeError("Received awaitable in sync mode.")
-
-                value = generator.send(value)
-            except StopIteration as e:
-                return e.value
-
-    async def validate_model(
+    async def validate(
         self,
         obj: tutils.JSONMapping,
         *,
         instance: typing.Optional[APIModel] = None,
+        extras: bool = False,
     ) -> tutils.JSONMapping:
         """Validate a mapping asynchronously.
 
         Returns the validated mapping.
         If an instance is not passed in, a dummy instance will be created.
         """
-        generator = self._validate_universal(obj, instance=instance)
-        value = generator.__next__()
-
-        while True:
-            try:
-                if isinstance(value, typing.Awaitable):
-                    value = await value
-
-                value = generator.send(value)
-            except StopIteration as e:
-                return e.value
-
-    async def from_mapping(self, obj: tutils.JSONMapping) -> APIModel:
-        """Create a model from a mapping."""
-        instance = typing.cast("APIModel", object.__new__(self))  # type: ignore
-        await self.validate_model(obj, instance=instance)
-        return instance
+        return await self._validate_universal.asynchronous(self, obj, instance=instance, extras=extras)
 
 
 class APIModel(utility.Representation, metaclass=APIModelMeta):
@@ -201,6 +182,29 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         return cls.sync_create(obj, **kwargs)
 
     @classmethod
+    def _check_init_args(
+        cls,
+        obj: typing.Optional[typing.Any] = None,
+        **kwargs: typing.Any,
+    ) -> tutils.JSONMapping:
+        """Check the arguments passed to the constructor.
+
+        Returns a mapping appropriate for passing to the validator.
+        """
+        if obj is None and not kwargs:
+            raise TypeError(f"{cls.__name__} expected at least 1 argument.")
+
+        if isinstance(obj, APIModel):
+            obj = obj.as_dict()
+        if obj is None:
+            obj = {}
+
+        if not isinstance(obj, typing.Mapping):
+            raise TypeError(f"Unparsable object: {obj}")
+
+        return {**obj, **kwargs}
+
+    @classmethod
     def sync_create(
         cls: typing.Type[APIModelT],
         obj: typing.Optional[typing.Any] = None,
@@ -208,21 +212,12 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     ) -> APIModelT:
         """Create a new model instance synchronously."""
         if cls.isasync:
-            raise TypeError("Must use from_mapping with an async APIModel.")
-        if obj is None and not kwargs:
-            raise TypeError(f"{cls.__name__} expected at least 1 argument.")
+            raise TypeError("Must use create with an async APIModel.")
 
         if isinstance(obj, cls):
             return obj
-        if isinstance(obj, APIModel):
-            obj = obj.__dict__  # TODO
-        if obj is None:
-            obj = {}
 
-        if not isinstance(obj, typing.Mapping):
-            raise TypeError(f"Unparsable object: {obj}")
-
-        obj = {**obj, **kwargs}
+        obj = cls._check_init_args(obj, **kwargs)
 
         self = super().__new__(cls)
         self.update_model_sync(obj)
@@ -235,20 +230,10 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         **kwargs: typing.Any,
     ) -> APIModelT:
         """Create a new model instance asynchronously."""
-        if obj is None and not kwargs:
-            raise TypeError(f"{cls.__name__} expected at least 1 argument.")
-
         if isinstance(obj, cls):
             return obj
-        if isinstance(obj, APIModel):
-            obj = obj.__dict__  # TODO
-        if obj is None:
-            obj = {}
 
-        if not isinstance(obj, typing.Mapping):
-            raise TypeError(f"Unparsable object: {obj}")
-
-        obj = {**obj, **kwargs}
+        obj = cls._check_init_args(obj, **kwargs)
 
         self = super().__new__(cls)
         await self.update_model(obj)
@@ -256,11 +241,20 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
     def update_model_sync(self, obj: tutils.JSONMapping) -> tutils.JSONMapping:
         """Update a model instance synchronously."""
-        return self.__class__.validate_model_sync(obj, instance=self)
+        return self.__class__.validate_sync(obj, instance=self, extras=True)
 
     async def update_model(self, obj: tutils.JSONMapping) -> tutils.JSONMapping:
         """Update a model instance asynchronously."""
-        return await self.__class__.validate_model(obj, instance=self)
+        return await self.__class__.validate(obj, instance=self, extras=True)
+
+    def _serialize_attr(self, attr: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        """Serialize an attribute."""
+        if isinstance(attr, APIModel):
+            return attr.as_dict(**kwargs)
+        if isinstance(attr, typing.Collection) and not isinstance(attr, str):
+            return [self._serialize_attr(x) for x in typing.cast("typing.Collection[object]", attr)]
+
+        return attr
 
     def as_dict(self, *, private: bool = False, alias: bool = True) -> tutils.JSONMapping:
         """Create a mapping from the model instance."""
@@ -271,7 +265,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
                 continue
 
             field_name = field.name if alias else attr_name
-            obj[field_name] = self.__dict__[attr_name]
+            attr = self.__dict__[attr_name]
+            obj[field_name] = self._serialize_attr(attr, private=private, alias=alias)
 
         return obj
 
@@ -281,9 +276,45 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
         for attr_name, extra in self.__class__.__extras__.items():
             field_name = extra.name if alias else attr_name
-            obj[field_name] = self.__dict__[attr_name]
+            if attr_name in self.__dict__:
+                obj[field_name] = self.__dict__[attr_name]
 
         return obj
 
     def __repr_args__(self) -> typing.Mapping[str, typing.Any]:
         return self.as_dict(private=True, alias=False)
+
+    @classmethod
+    def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., typing.Any]]:
+        """Get pydantic validators for compatibility."""
+        yield cls.sync_create
+
+    @classmethod
+    def __modify_schema__(cls, field_schema: typing.Dict[str, typing.Any], *, experimental: bool = False) -> None:
+        """Create a schema for pydantic."""
+        # if experimental:
+        #     import pydantic  # noqa: I900
+        #     import pydantic.schema  # noqa: I900
+
+        #     properties: typing.Dict[str, typing.Any] = {}
+        #     for attr_name, field in cls.__fields__.items():
+        #         mfield = pydantic.fields.ModelField(
+        #             name=attr_name,
+        #             type_=typing.Any,
+        #             class_validators={},
+        #             model_config=pydantic.BaseConfig,
+        #             default=field.default if field.default is not ... else pydantic.fields.Undefined,
+        #             required=field.default is ...,
+        #             alias=field.name,
+        #         )
+        #         for validator in field.validators:
+        #             if isinstance(validator, parser.AnnotationValidator):
+        #                 mfield.type_ = validator.tp
+        #                 break
+
+        #         properties[field.name], _, _ = pydantic.schema.field_schema(mfield, model_name_map={})
+
+        field_schema.update(
+            type="object",
+            properties={field.name: dict(type="any") for field in cls.__fields__.values() if not field.private},
+        )

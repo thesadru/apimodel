@@ -69,6 +69,7 @@ class ModelFieldInfo(FieldInfo):
             default = default.default
 
         validator = parser.get_validator(annotation)
+        validator.tp = annotation
         validators.append(validator)
 
         return cls(default, name=name, private=private, validator=validators)

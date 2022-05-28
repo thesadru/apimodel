@@ -75,6 +75,8 @@ def test(session: nox.Session) -> None:
     install_requirements(session, "pytest")
 
     session.run(
+        "python",
+        "-m",
         "pytest",
         "--asyncio-mode=auto",
         "-r",
