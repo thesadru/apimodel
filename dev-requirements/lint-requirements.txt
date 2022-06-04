@@ -1,4 +1,5 @@
-flake8 
+slotscheck
+flake8
 
 flake8-annotations-complexity # complex annotation
 flake8-bandit       # runs bandit

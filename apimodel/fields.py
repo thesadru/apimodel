@@ -13,16 +13,16 @@ T = typing.TypeVar("T")
 class FieldInfo(utility.Representation):
     """Basic information about a field."""
 
-    __slots__ = ("default", "name", "validators")
+    __slots__ = ("default", "name", "private", "validators")
 
-    default: typing.Any
+    default: object
     name: typing.Optional[str]
     private: bool
     validators: typing.List[validation.Validator]
 
     def __init__(
         self,
-        default: typing.Any = ...,
+        default: object = ...,
         *,
         name: typing.Optional[str] = None,
         private: bool = False,
@@ -50,10 +50,12 @@ class FieldInfo(utility.Representation):
 class ModelFieldInfo(FieldInfo):
     """Complete information about a field."""
 
+    __slots__ = ()
+
     name: str
 
     @classmethod
-    def from_annotation(cls, name: str, annotation: typing.Any, default: typing.Any = ...) -> ModelFieldInfo:
+    def from_annotation(cls, name: str, annotation: object, default: object = ...) -> ModelFieldInfo:
         """Create a new model field info from an annotation.
 
         If the default is already a FieldInfo, the data is copied.
@@ -87,7 +89,7 @@ class ExtraInfo(utility.Representation):
 
 
 def Field(
-    default: typing.Any = ...,
+    default: object = ...,
     *,
     name: typing.Optional[str],
     private: bool = False,

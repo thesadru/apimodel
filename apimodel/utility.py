@@ -17,15 +17,26 @@ __all__ = ["Representation"]
 T = typing.TypeVar("T")
 
 
+def get_slots(cls: object) -> typing.Collection[str]:
+    """Get all the slots for a class."""
+    slots: typing.Set[str] = set()
+    for subclass in cls.__class__.mro():
+        slots.update(getattr(subclass, "__slots__", ()))
+
+    return slots
+
+
 class Representation:
     """Pydantic's Representation.
 
     Supports pretty repr and devtools.
     """
 
-    def __repr_args__(self) -> typing.Mapping[str, typing.Any]:
-        if __slots__ := getattr(self, "__slots__", ()):
-            args = {k: getattr(self, k) for k in __slots__ if hasattr(self, k)}
+    __slots__ = ()
+
+    def __repr_args__(self) -> typing.Mapping[str, object]:
+        if hasattr(self, "__slots__"):
+            args = {k: getattr(self, k) for k in get_slots(self) if hasattr(self, k)}
         else:
             args = self.__dict__
 
@@ -35,7 +46,7 @@ class Representation:
         args = ", ".join(f"{k}={v!r}" for k, v in self.__repr_args__().items())
         return f"{self.__class__.__name__}({args})"
 
-    def __pretty__(self, fmt: typing.Callable[[typing.Any], str], **kwargs: typing.Any) -> typing.Iterator[typing.Any]:
+    def __pretty__(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""
         yield type(self).__name__
         yield "("
@@ -68,6 +79,10 @@ class UniversalAsync(typing.Generic[P, T]):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.callback!r})"
+
+    @property
+    def __name__(self) -> str:
+        return self.callback.__name__
 
     def synchronous(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Run the callback synchronously."""

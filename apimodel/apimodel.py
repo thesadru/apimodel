@@ -15,6 +15,16 @@ def _get_ordered(validators: typing.Sequence[ValidatorT], order: validation.Orde
     return [validator for validator in validators if order <= validator.order < (order + 10)]
 
 
+def _serialize_attr(attr: object, **kwargs: object) -> object:
+    """Serialize an attribute."""
+    if isinstance(attr, APIModel):
+        return attr.as_dict(**kwargs)
+    if isinstance(attr, typing.Collection) and not isinstance(attr, str):
+        return [_serialize_attr(x) for x in typing.cast("typing.Collection[object]", attr)]
+
+    return attr
+
+
 class APIModelMeta(type):
     """API model metaclass.
 
@@ -25,7 +35,7 @@ class APIModelMeta(type):
     __extras__: typing.Dict[str, fields.ExtraInfo]
     __root_validators__: typing.Sequence[validation.RootValidator]
 
-    def __new__(cls, name: str, bases: typing.Tuple[type], namespace: typing.Dict[str, typing.Any]) -> APIModelMeta:
+    def __new__(cls, name: str, bases: typing.Tuple[type], namespace: typing.Dict[str, object]) -> APIModelMeta:
         """Create a new model class.
 
         Collects all fields and validators.
@@ -172,8 +182,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
     def __new__(
         cls: typing.Type[APIModelT],
-        obj: typing.Optional[typing.Any] = None,
-        **kwargs: typing.Any,
+        obj: typing.Optional[object] = None,
+        **kwargs: object,
     ) -> APIModelT:
         """Create a new model instance.
 
@@ -184,8 +194,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     @classmethod
     def _check_init_args(
         cls,
-        obj: typing.Optional[typing.Any] = None,
-        **kwargs: typing.Any,
+        obj: typing.Optional[object] = None,
+        **kwargs: object,
     ) -> tutils.JSONMapping:
         """Check the arguments passed to the constructor.
 
@@ -207,12 +217,12 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     @classmethod
     def sync_create(
         cls: typing.Type[APIModelT],
-        obj: typing.Optional[typing.Any] = None,
-        **kwargs: typing.Any,
+        obj: typing.Optional[object] = None,
+        **kwargs: object,
     ) -> APIModelT:
         """Create a new model instance synchronously."""
         if cls.isasync:
-            raise TypeError("Must use create with an async APIModel.")
+            raise TypeError("Must use the create method with an async APIModel.")
 
         if isinstance(obj, cls):
             return obj
@@ -226,8 +236,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     @classmethod
     async def create(
         cls: typing.Type[APIModelT],
-        obj: typing.Optional[typing.Any] = None,
-        **kwargs: typing.Any,
+        obj: typing.Optional[object] = None,
+        **kwargs: object,
     ) -> APIModelT:
         """Create a new model instance asynchronously."""
         if isinstance(obj, cls):
@@ -247,15 +257,6 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         """Update a model instance asynchronously."""
         return await self.__class__.validate(obj, instance=self, extras=True)
 
-    def _serialize_attr(self, attr: typing.Any, **kwargs: typing.Any) -> typing.Any:
-        """Serialize an attribute."""
-        if isinstance(attr, APIModel):
-            return attr.as_dict(**kwargs)
-        if isinstance(attr, typing.Collection) and not isinstance(attr, str):
-            return [self._serialize_attr(x) for x in typing.cast("typing.Collection[object]", attr)]
-
-        return attr
-
     def as_dict(self, *, private: bool = False, alias: bool = True) -> tutils.JSONMapping:
         """Create a mapping from the model instance."""
         obj: tutils.JSONMapping = {}
@@ -266,13 +267,13 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
             field_name = field.name if alias else attr_name
             attr = self.__dict__[attr_name]
-            obj[field_name] = self._serialize_attr(attr, private=private, alias=alias)
+            obj[field_name] = _serialize_attr(attr, private=private, alias=alias)
 
         return obj
 
-    def get_extras(self, alias: bool = True) -> typing.Mapping[str, typing.Any]:
+    def get_extras(self, alias: bool = True) -> typing.Mapping[str, object]:
         """Get extra fields which are normally not part of the model."""
-        obj: typing.Mapping[str, typing.Any] = {}
+        obj: typing.Mapping[str, object] = {}
 
         for attr_name, extra in self.__class__.__extras__.items():
             field_name = extra.name if alias else attr_name
@@ -281,26 +282,26 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
         return obj
 
-    def __repr_args__(self) -> typing.Mapping[str, typing.Any]:
+    def __repr_args__(self) -> typing.Mapping[str, object]:
         return self.as_dict(private=True, alias=False)
 
     @classmethod
-    def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., typing.Any]]:
+    def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
         """Get pydantic validators for compatibility."""
         yield cls.sync_create
 
     @classmethod
-    def __modify_schema__(cls, field_schema: typing.Dict[str, typing.Any], *, experimental: bool = False) -> None:
+    def __modify_schema__(cls, field_schema: typing.Dict[str, object], *, experimental: bool = False) -> None:
         """Create a schema for pydantic."""
         # if experimental:
         #     import pydantic  # noqa: I900
         #     import pydantic.schema  # noqa: I900
 
-        #     properties: typing.Dict[str, typing.Any] = {}
+        #     properties: typing.Dict[str, object] = {}
         #     for attr_name, field in cls.__fields__.items():
         #         mfield = pydantic.fields.ModelField(
         #             name=attr_name,
-        #             type_=typing.Any,
+        #             type_=object,
         #             class_validators={},
         #             model_config=pydantic.BaseConfig,
         #             default=field.default if field.default is not ... else pydantic.fields.Undefined,

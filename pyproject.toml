@@ -11,6 +11,9 @@ target-version = ["py39"]
 [tool.isort]
 profile = "black"
 
+[tool.slotscheck]
+require-superclass = false
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]

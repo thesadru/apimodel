@@ -54,6 +54,7 @@ def lint(session: nox.Session) -> None:
     install_requirements(session, "lint")
     session.run("flake8", "--version")
     session.run("flake8", *GENERAL_TARGETS, *verbose_args())
+    session.run("python", "-m", "slotscheck", "-m", PACKAGE, *verbose_args())
 
 
 @nox.session()

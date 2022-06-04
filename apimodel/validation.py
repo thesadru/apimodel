@@ -16,7 +16,7 @@ T = typing.TypeVar("T")
 class Order(enum.IntEnum):
     """The order of a validator."""
 
-    def _generate_next_value_(self, start: int, count: int, last_values: typing.Sequence[typing.Any]) -> int:
+    def _generate_next_value_(self, start: int, count: int, last_values: typing.Sequence[object]) -> int:
         return (count) * 10
 
     INITIAL_ROOT = enum.auto()
@@ -44,7 +44,7 @@ class BaseValidator(utility.Representation):
 
         self.bound = False
 
-    def __call__(self, model: typing.Any, value: typing.Any) -> tutils.MaybeAwaitable[typing.Any]:
+    def __call__(self, model: object, value: object) -> tutils.MaybeAwaitable[typing.Any]:
         """Call the validator and optionally give it a model.
 
         May return an Awaitable if the callback is async.
@@ -76,7 +76,7 @@ class Validator(BaseValidator):
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.VALIDATOR) -> None:
         super().__init__(callback, order=order)
 
-    def __call__(self, model: typing.Any, value: typing.Any) -> tutils.MaybeAwaitable[typing.Any]:
+    def __call__(self, model: object, value: object) -> tutils.MaybeAwaitable[object]:
         """Call the validator with a single value and optionally give it a model.
 
         May return an Awaitable if the callback is async.
@@ -90,7 +90,7 @@ class RootValidator(BaseValidator):
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.INITIAL_ROOT):
         super().__init__(callback, order=order)
 
-    def __call__(self, model: typing.Any, values: tutils.JSONMapping) -> tutils.MaybeAwaitable[tutils.JSONMapping]:
+    def __call__(self, model: object, values: tutils.JSONMapping) -> tutils.MaybeAwaitable[tutils.JSONMapping]:
         """Call the validator with its dict and optionally give it a model.
 
         May return an Awaitable if the callback is async.

@@ -9,7 +9,7 @@ import apimodel
 
 @pytest.fixture()
 def model() -> apimodel.APIModel:
-    """Dummy model with no validation."""
+    """Return a dummy model with no validation."""
     return apimodel.APIModel({})
 
 
@@ -22,7 +22,7 @@ def model() -> apimodel.APIModel:
         (1356998400, datetime.datetime(2013, 1, 1, tzinfo=datetime.timezone.utc)),
     ],
 )
-def test_datetime_validator(model: apimodel.APIModel, value: typing.Any, expected: datetime.datetime) -> typing.Any:
+def test_datetime_validator(model: apimodel.APIModel, value: object, expected: datetime.datetime) -> object:
     assert apimodel.parser.datetime_validator(model, value) == expected
 
 
@@ -33,11 +33,11 @@ def test_datetime_validator(model: apimodel.APIModel, value: typing.Any, expecte
         (2, datetime.timedelta(seconds=2)),
     ],
 )
-def test_timedelta_validator(model: apimodel.APIModel, value: typing.Any, expected: datetime.timedelta) -> typing.Any:
+def test_timedelta_validator(model: apimodel.APIModel, value: object, expected: datetime.timedelta) -> object:
     assert apimodel.parser.timedelta_validator(model, value) == expected
 
 
-def test_noop_validator(model: apimodel.APIModel) -> typing.Any:
+def test_noop_validator(model: apimodel.APIModel) -> object:
     value = object()
     assert apimodel.parser.noop_validator(model, value) == value
 
@@ -51,10 +51,10 @@ def test_noop_validator(model: apimodel.APIModel) -> typing.Any:
 )
 def test_cast_validator(
     model: apimodel.APIModel,
-    callback: typing.Callable[[typing.Any], typing.Any],
-    value: typing.Any,
-    expected: typing.Any,
-) -> typing.Any:
+    callback: typing.Callable[[object], object],
+    value: object,
+    expected: object,
+) -> object:
     assert apimodel.parser.cast_validator(callback)(model, value) == expected
 
 
@@ -67,10 +67,10 @@ def test_cast_validator(
 )
 def test_arbitrary_validator(
     model: apimodel.APIModel,
-    tp: typing.Type[typing.Any],
-    value: typing.Any,
-    expected: typing.Any,
-) -> typing.Any:
+    tp: type,
+    value: object,
+    expected: object,
+) -> object:
     assert apimodel.parser.arbitrary_validator(tp)(model, value) == expected
 
 
@@ -83,10 +83,10 @@ def test_arbitrary_validator(
 )
 def test_literal_validator(
     model: apimodel.APIModel,
-    values: typing.Collection[typing.Any],
-    value: typing.Any,
-    expected: typing.Any,
-) -> typing.Any:
+    values: typing.Collection[object],
+    value: object,
+    expected: object,
+) -> object:
     assert apimodel.parser.literal_validator(values)(model, value) == expected
 
 
@@ -97,7 +97,7 @@ def test_literal_validator(
         (typing.Sequence[int], apimodel.parser.cast_validator(int), {1, 2}, (1, 2)),
         (typing.Set[bool], apimodel.parser.cast_validator(bool), [0, 1], frozenset({False, True})),
         (
-            typing.MutableSet[typing.Any] if sys.version_info >= (3, 9) else typing.Set[typing.Any],
+            typing.MutableSet[object] if sys.version_info >= (3, 9) else typing.Set[object],
             apimodel.parser.noop_validator,
             ["foo", 1],
             {"foo", 1},
@@ -106,11 +106,11 @@ def test_literal_validator(
 )
 def test_collection_validator(
     model: apimodel.APIModel,
-    collection_type: typing.Type[typing.Any],
+    collection_type: typing.Type[typing.Collection[object]],
     inner_validator: apimodel.Validator,
-    value: typing.Any,
-    expected: typing.Any,
-) -> typing.Any:
+    value: object,
+    expected: object,
+) -> object:
     assert apimodel.parser.collection_validator(collection_type, inner_validator)(model, value) == expected
 
 
@@ -128,12 +128,12 @@ def test_collection_validator(
 )
 def test_mapping_validator(
     model: apimodel.APIModel,
-    mapping_type: typing.Type[typing.Any],
+    mapping_type: typing.Type[typing.Mapping[object, object]],
     key_validator: apimodel.Validator,
     value_validator: apimodel.Validator,
-    value: typing.Any,
-    expected: typing.Any,
-) -> typing.Any:
+    value: object,
+    expected: object,
+) -> object:
     assert apimodel.parser.mapping_validator(mapping_type, key_validator, value_validator)(model, value) == expected
 
 
@@ -147,21 +147,21 @@ def test_mapping_validator(
 def test_union_validator(
     model: apimodel.APIModel,
     validators: typing.List[apimodel.Validator],
-    value: typing.Any,
-    expected: typing.Any,
-) -> typing.Any:
+    value: object,
+    expected: object,
+) -> object:
     assert apimodel.parser.union_validator(validators)(model, value) == expected
 
 
 @pytest.mark.parametrize(
     ("tp", "value", "expected"),
     [
-        (typing.Any, "foo", "foo"),
+        (object, "foo", "foo"),
         (int, "42", 42),
         (typing.Union[int, float], "4.2", 4.2),
-        (typing.Annotated[object, typing.Any] if sys.version_info >= (3, 9) else typing.Any, "foo", "foo"),
+        (typing.Annotated[object, object] if sys.version_info >= (3, 9) else object, "foo", "foo"),
         (typing.TypeVar("T", bound=str), 42, "42"),
     ],
 )
-def test_cast(tp: typing.Type[typing.Any], value: typing.Any, expected: typing.Any) -> typing.Any:
+def test_cast(tp: type, value: object, expected: object) -> object:
     assert apimodel.parser.cast(tp, value) == expected
