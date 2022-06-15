@@ -5,6 +5,9 @@ import typing
 
 from . import fields, tutils, utility, validation
 
+if typing.TYPE_CHECKING:
+    import typing_extensions
+
 __all__ = ["APIModel"]
 
 ValidatorT = typing.TypeVar("ValidatorT", bound=validation.BaseValidator)
@@ -31,11 +34,18 @@ class APIModelMeta(type):
     Stores fields and validators generated for every model.
     """
 
-    __fields__: typing.Dict[str, fields.ModelFieldInfo]
-    __extras__: typing.Dict[str, fields.ExtraInfo]
+    __fields__: typing.Mapping[str, fields.ModelFieldInfo]
+    __extras__: typing.Mapping[str, fields.ExtraInfo]
     __root_validators__: typing.Sequence[validation.RootValidator]
 
-    def __new__(cls, name: str, bases: typing.Tuple[type], namespace: typing.Dict[str, object]) -> APIModelMeta:
+    def __new__(
+        cls,
+        name: str,
+        bases: typing.Tuple[type],
+        namespace: typing.Dict[str, object],
+        *,
+        field_cls: typing.Optional[typing.Type[fields.ModelFieldInfo]] = None,
+    ) -> typing_extensions.Self:
         """Create a new model class.
 
         Collects all fields and validators.
@@ -45,12 +55,14 @@ class APIModelMeta(type):
         self.__extras__ = {}
         self.__root_validators__ = []
 
+        field_cls = field_cls or fields.ModelFieldInfo
+
         for name, annotation in typing.get_type_hints(self).items():
             obj = getattr(self, name, ...)
             if isinstance(obj, fields.ExtraInfo):
                 continue  # resolved later
 
-            self.__fields__[name] = fields.ModelFieldInfo.from_annotation(name, annotation, obj)
+            self.__fields__[name] = field_cls.from_annotation(name, annotation, obj)
 
         for name in dir(self):
             obj = getattr(self, name, ...)
@@ -69,7 +81,45 @@ class APIModelMeta(type):
 
     def __repr__(self) -> str:
         args = ", ".join(f"{k}={v!r}" for k, v in self.__fields__.items())
-        return f"{self.__name__}({args})"
+        return f"{self.__name__}.__class__({args})"
+
+    def __devtools_pretty(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
+        """Devtools pretty formatting."""
+        yield self.__class__.__name__
+        yield "("
+        yield 1
+
+        yield fmt(self.__name__)
+        yield ","
+        yield 0
+        yield fmt(self.__root_validators__)
+        yield ","
+        yield 0
+
+        for k, v in self.__extras__.items():
+            yield k
+            yield "="
+            yield fmt(v)
+            yield ","
+            yield 0
+
+        for k, v in self.__fields__.items():
+            yield k
+            yield "="
+            yield fmt(v)
+            yield ","
+            yield 0
+
+        yield -1
+        yield ")"
+
+    if not typing.TYPE_CHECKING:
+
+        def __getattribute__(self, name: str) -> object:
+            if name == "__pretty__":
+                return self.__devtools_pretty
+
+            return super().__getattribute__(name)
 
     @property
     def isasync(self) -> bool:
@@ -283,7 +333,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         return obj
 
     def __repr_args__(self) -> typing.Mapping[str, object]:
-        return self.as_dict(private=True, alias=False)
+        return self.__dict__
 
     @classmethod
     def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:

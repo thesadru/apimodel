@@ -65,6 +65,9 @@ def debuggable_deco(func: tutils.AnyCallableT) -> tutils.AnyCallableT:
 
         callback.__qualname__ = notation
 
+        if not hasattr(callback, "__pretty__"):
+            callback.__pretty__ = utility.make_pretty_signature(func.__name__, *args, **kwargs)  # type: ignore
+
         return obj
 
     return typing.cast("tutils.AnyCallableT", wrapper)
@@ -296,7 +299,7 @@ if not typing.TYPE_CHECKING:
 
 def normalize_annotation(tp: object) -> object:
     if isinstance(tp, tutils.AnnotatedAlias):
-        tp = typing.get_args(tp)[1]
+        tp = typing.get_args(tp)[0]
 
     if isinstance(tp, typing.TypeVar):
         if tp.__bound__:
@@ -350,7 +353,7 @@ def get_validator(tp: object, *, normalize: bool = True) -> AnnotationValidator:
     if isinstance(tp, type):
         return arbitrary_validator(tp)
 
-    raise TypeError(f"Unknown annotation: {tp}. Use Annotated[{tp}, object] to disable the default validator.")
+    raise TypeError(f"Unknown annotation: {tp}. Use Annotated[object, {tp}] to disable the default validator.")
 
 
 def cast(tp: object, value: object) -> object:

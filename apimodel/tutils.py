@@ -7,6 +7,7 @@ import typing
 if typing.TYPE_CHECKING:
     import typing_extensions
 
+# Combinations of identical types
 if sys.version_info >= (3, 10):
     from types import NoneType, UnionType
 
@@ -17,17 +18,45 @@ else:
     UnionTypes: typing.Set[object] = {typing.Union}
     NoneTypes: typing.Set[object] = {None, type(None)}
 
-if sys.version_info >= (3, 9):
-    Annotated = typing.Annotated
-    AnnotatedAlias = type(typing.Annotated[object, object])
-else:
-    AnnotatedAlias: type = type("AnnotatedAlias", (), {})
-    Annotated: object = AnnotatedAlias()
 
+# Self
+if sys.version_info >= (3, 11):
+    Self = typing.Self
+elif typing.TYPE_CHECKING:
+    from typing_extensions import Self  # type: ignore # noqa
+else:
+    try:
+        from typing_extensions import Self
+    except ImportError:
+        Self = typing.Any
+
+# GenericAlias
 if sys.version_info >= (3, 9):
     from types import GenericAlias
 else:
-    from typing import _GenericAlias as GenericAlias  # type: ignore
+    from typing import _GenericAlias as GenericAlias  # type: ignore # noqa
+
+# Annotated and AnnotatedAlias
+if sys.version_info >= (3, 9):
+    Annotated = typing.Annotated
+    AnnotatedAlias = type(typing.Annotated[object, object])
+elif typing.TYPE_CHECKING:
+    from typing_extensions import Annotated  # type: ignore # noqa
+    from typing_extensions import _AnnotatedAlias as AnnotatedAlias  # type: ignore # noqa
+else:
+    try:
+        from typing_extensions import Annotated  # type: ignore # noqa
+        from typing_extensions import _AnnotatedAlias as AnnotatedAlias  # type: ignore # noqa
+
+    except ImportError:
+
+        class AnnotatedAlias(GenericAlias, _root=True):  # noqa
+            def __init__(self, origin: type, metadata: object) -> None:
+                super().__init__(origin, origin)
+                self.__metadata__ = metadata
+
+        Annotated: type = type("Annotated", (), {"__class_getitem__": lambda cls, *args: AnnotatedAlias(*args)})  # type: ignore
+
 
 T = typing.TypeVar("T")
 T1 = typing.TypeVar("T1")

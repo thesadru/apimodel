@@ -56,13 +56,11 @@ class Representation:
             yield k
             yield "="
             yield fmt(v)
+            yield ","
             yield 0
 
         yield -1
         yield ")"
-
-    def __copy__(self) -> typing_extensions.Self:
-        return self.__class__(**self.__repr_args__())  # type: ignore
 
 
 class UniversalAsync(typing.Generic[P, T]):
@@ -113,6 +111,37 @@ class UniversalAsync(typing.Generic[P, T]):
                 value = generator.send(value)
         except StopIteration as e:
             return e.value
+
+    def __pretty__(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
+        """Devtools pretty formatting."""
+        yield fmt(self.callback)
+
+
+def make_pretty_signature(name: str, *args: object, **kwargs: object) -> typing.Callable[..., typing.Iterator[object]]:
+    """Devtools pretty formatting for a higher order functions."""
+
+    class Dummy:
+        def __pretty__(self, fmt: typing.Callable[[object], str], **options: object) -> typing.Iterator[object]:
+            yield name
+            yield "("
+            yield 1
+
+            for v in args:
+                yield fmt(v)
+                yield ","
+                yield 0
+
+            for k, v in kwargs.items():
+                yield k
+                yield "="
+                yield fmt(v)
+                yield ","
+                yield 0
+
+            yield -1
+            yield ")"
+
+    return Dummy().__pretty__
 
 
 def as_universal(callback: typing.Callable[P, tutils.UniversalAsyncGenerator[T]]) -> UniversalAsync[P, T]:

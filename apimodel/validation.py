@@ -17,7 +17,7 @@ class Order(enum.IntEnum):
     """The order of a validator."""
 
     def _generate_next_value_(self, start: int, count: int, last_values: typing.Sequence[object]) -> int:
-        return (count) * 10
+        return count * 10
 
     INITIAL_ROOT = enum.auto()
     # ALIAS

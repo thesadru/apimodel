@@ -10,6 +10,7 @@ target-version = ["py39"]
 
 [tool.isort]
 profile = "black"
+line_length = 120
 
 [tool.slotscheck]
 require-superclass = false
