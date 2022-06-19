@@ -66,8 +66,8 @@ MaybeSequence = typing.Union[T, typing.Sequence[T]]
 MaybeAwaitable = typing.Union[T, typing.Awaitable[T]]
 
 JSONMapping = typing.Mapping[str, object]
-AnyCallable = typing.Callable[..., object]
-AnyCallableT = typing.TypeVar("AnyCallableT", bound=AnyCallable)
+AnyCallable = typing.Callable[..., typing.Any]
+CallableT = typing.TypeVar("CallableT", bound=AnyCallable)
 IdentityCallable = typing.Callable[[T], T]
 DecoratorCallable = typing.Callable[[AnyCallable], T]
 UniversalAsyncGenerator = typing.Generator[MaybeAwaitable[object], typing.Any, T]

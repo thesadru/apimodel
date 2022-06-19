@@ -44,7 +44,7 @@ def as_validator(callback: tutils.ValidatorSig) -> AnnotationValidator:
     return validator
 
 
-def debuggable_deco(func: tutils.AnyCallableT) -> tutils.AnyCallableT:
+def debuggable_deco(func: tutils.CallableT) -> tutils.CallableT:
     """Make a higher order function's return debuggable."""
 
     def wrapper(*args: object, **kwargs: object) -> object:
@@ -71,7 +71,7 @@ def debuggable_deco(func: tutils.AnyCallableT) -> tutils.AnyCallableT:
 
         return obj
 
-    return typing.cast("tutils.AnyCallableT", wrapper)
+    return typing.cast("tutils.CallableT", wrapper)
 
 
 @as_validator
@@ -321,7 +321,7 @@ def normalize_annotation(tp: object) -> object:
     return tp
 
 
-def _add_tp(callback: tutils.AnyCallableT) -> tutils.AnyCallableT:
+def _add_tp(callback: tutils.CallableT) -> tutils.CallableT:
     def wrapper(tp: object, *args: object, **kwargs: object) -> object:
         tp = normalize_annotation(tp)
         r = callback(tp, *args, **kwargs)
@@ -330,7 +330,7 @@ def _add_tp(callback: tutils.AnyCallableT) -> tutils.AnyCallableT:
 
         return r
 
-    return typing.cast("tutils.AnyCallableT", wrapper)
+    return typing.cast("tutils.CallableT", wrapper)
 
 
 @_add_tp

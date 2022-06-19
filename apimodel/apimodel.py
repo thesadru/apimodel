@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import typing
 
-from . import fields, tutils, utility, validation
+from . import errors, fields, tutils, utility, validation
 
 if typing.TYPE_CHECKING:
     import typing_extensions
@@ -119,7 +119,7 @@ class APIModelMeta(type):
         )
 
     @utility.as_universal
-    def _validate_universal(
+    def _validate_universal(  # noqa # C901: too complex
         self,
         obj: tutils.JSONMapping,
         *,
@@ -136,12 +136,21 @@ class APIModelMeta(type):
         if instance is None:
             instance = typing.cast("APIModel", object.__new__(self))  # type: ignore
 
+        ers: typing.Sequence[errors.LocError] = []
+
+        # =============================
         # INITIAL ROOT
         for validator in _get_ordered(self.__root_validators__, order=validation.Order.INITIAL_ROOT):
-            obj = yield validator(instance, obj)
+            try:
+                obj = yield validator(instance, obj)
+            except Exception as e:
+                ers.append(errors.LocError(e))
+
+        errors.maybe_raise_error(*ers, model=self)
 
         obj = dict(obj)
 
+        # =============================
         # ALIAS
         new_obj: tutils.JSONMapping = {}
 
@@ -153,36 +162,64 @@ class APIModelMeta(type):
                 setattr(instance, attr_name, obj[field.name])
                 new_obj[attr_name] = obj[field.name]
 
+        # =============================
+        # EXTRAS
         if extras:
             for attr_name, extra in self.__extras__.items():
                 if extra.name not in obj:
-                    raise TypeError(f"Missing required extra attribute {extra.name}.")
+                    ers.append(errors.LocError(TypeError(f"Missing required field: {attr_name!r}"), attr_name))
 
                 setattr(instance, attr_name, obj[extra.name])
 
+        errors.maybe_raise_error(*ers, model=self)
+
         obj = new_obj
 
+        # =============================
         # ROOT
         for validator in _get_ordered(self.__root_validators__, order=validation.Order.ROOT):
-            obj = yield validator(instance, obj)
+            try:
+                obj = yield validator(instance, obj)
+            except Exception as e:
+                ers.append(errors.LocError(e))
+
+        errors.maybe_raise_error(*ers, model=self)
+
+        # =============================
+        for attr_name, field in self.__fields__.items():
+            if attr_name not in obj:
+                ers.append(errors.LocError(TypeError(f"Missing required field: {attr_name!r}"), attr_name))
+
+        errors.maybe_raise_error(*ers, model=self)
 
         obj = dict(obj)
 
+        # =============================
         # VALIDATOR
         orders = (validation.Order.VALIDATOR, validation.Order.ANNOTATION, validation.Order.POST_VALIDATOR)
-        for attr_name, field in self.__fields__.items():
-            if attr_name not in obj:
-                raise TypeError("Missing field: " + attr_name)
-
-            for order in orders:
+        for order in orders:
+            for attr_name, field in self.__fields__.items():
                 for validator in _get_ordered(field.validators, order=order):
-                    obj[attr_name] = yield validator(instance, obj[attr_name])
+                    try:
+                        obj[attr_name] = yield validator(instance, obj[attr_name])
+                    except Exception as e:
+                        ers.append(errors.LocError(e, attr_name))
+
                     setattr(instance, attr_name, obj[attr_name])
 
+            errors.maybe_raise_error(*ers, model=self)
+
+        # =============================
         # FINAL ROOT
         for validator in _get_ordered(self.__root_validators__, order=validation.Order.FINAL_ROOT):
-            obj = yield validator(instance, obj)
+            try:
+                obj = yield validator(instance, obj)
+            except Exception as e:
+                ers.append(errors.LocError(e))
 
+        errors.maybe_raise_error(*ers, model=self)
+
+        # =============================
         return obj
 
     def validate_sync(

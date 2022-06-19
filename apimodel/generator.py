@@ -7,7 +7,7 @@ import json
 import sys
 import typing
 
-from . import tutils
+from . import tutils, utility
 
 __all__ = ["generate_models"]
 
@@ -57,22 +57,9 @@ def format_object(values: typing.Union[str, typing.Sequence[str]]) -> str:
     return genalias.format(", ".join(values))
 
 
-def flatten_list(values: typing.Sequence[tutils.MaybeSequence[T]]) -> typing.Sequence[T]:
-    """Flatten a possibly recursive list."""
-    new: typing.Sequence[T] = []
-
-    for value in values:
-        if isinstance(value, typing.Sequence) and not isinstance(value, str):
-            new += flatten_list(typing.cast("typing.Sequence[T]", value))
-        else:
-            new.append(typing.cast("T", value))
-
-    return new
-
-
 def join_union(raw_values: typing.Sequence[T]) -> tutils.MaybeSequence[T]:
     """Join a union with an emphasis on mappings."""
-    values = flatten_list(raw_values)
+    values = utility.flatten_sequences(raw_values)
     values = tuple({repr(tp): tp for tp in values}.values())
     if "float" in values:
         values = [x for x in values if x != "int"]

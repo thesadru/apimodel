@@ -17,6 +17,19 @@ __all__ = ["Representation", "devtools_pretty"]
 T = typing.TypeVar("T")
 
 
+def flatten_sequences(*sequences: tutils.MaybeSequence[T]) -> typing.Sequence[T]:
+    """Flatten a possibly nested sequence."""
+    joined: typing.Sequence[T] = []
+
+    for sequence in sequences:
+        if isinstance(sequence, typing.Sequence) and not isinstance(sequence, str):
+            joined += flatten_sequences(*typing.cast("typing.Sequence[T]", sequence))
+        else:
+            joined.append(typing.cast("T", sequence))
+
+    return joined
+
+
 def devtools_pretty(fmt: typing.Callable[[object], str], *args: object, **kwargs: object) -> typing.Iterator[object]:
     """Format args and kwargs for devtools."""
     for v in args:
@@ -91,6 +104,8 @@ class Representation:
 
 
 class Proxy:
+    """Proxy object with possible setattr."""
+
     obj: object
 
     def __init__(self, obj: object) -> None:
@@ -106,7 +121,10 @@ class Proxy:
         return getattr(self, name)
 
     def __setattr__(self, name: str, value: object) -> None:
-        setattr(self.__proxy_obj, name, value)
+        try:
+            setattr(self.__proxy_obj, name, value)
+        except AttributeError:
+            object.__setattr__(self, name, value)
 
     def __dir__(self) -> typing.Iterable[str]:
         return self.__proxy_obj.__dir__()

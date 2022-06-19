@@ -13,18 +13,6 @@ __all__ = ["Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo"]
 T = typing.TypeVar("T")
 
 
-def _join_sequences(*sequences: tutils.MaybeSequence[T]) -> typing.Sequence[T]:
-    joined: typing.Sequence[T] = []
-
-    for sequence in sequences:
-        if isinstance(sequence, typing.Sequence) and not isinstance(sequence, str):
-            joined.extend(typing.cast("typing.Sequence[T]", sequence))
-        else:
-            joined.append(typing.cast("T", sequence))
-
-    return joined
-
-
 class FieldInfo(utility.Representation):
     """Basic information about a field."""
 
@@ -52,7 +40,7 @@ class FieldInfo(utility.Representation):
 
         self.validators = [
             callback if isinstance(callback, validation.Validator) else validation.Validator(callback)
-            for callback in _join_sequences(validators)
+            for callback in utility.flatten_sequences(validators)
         ]
         self.validators.sort(key=lambda v: v.order)
 
@@ -129,7 +117,7 @@ def Field(
         default=default,
         name=name,
         private=private,
-        validators=_join_sequences(validator, validators),
+        validators=utility.flatten_sequences(validator, validators),
         **extra,
     )
 
