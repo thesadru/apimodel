@@ -12,8 +12,13 @@ __all__ = ["LocalizedAPIModel"]
 
 
 class LocalizedFieldInfo(fields.ModelFieldInfo):
+    """Complete information about a localized field."""
+
     i18n: typing.Optional[typing.Union[str, typing.Mapping[str, str]]]
+    """Localized field names."""
+
     localizator: typing.Optional[typing.Callable[[typing.Any, str], typing.Optional[object]]]
+    """Getter for localized values of the field."""
 
     def __init__(
         self,
@@ -37,7 +42,12 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
             **extra,
         )
 
-    def get_localized_name(self, provider: typing.Mapping[str, typing.Mapping[str, str]], locale: str) -> str:
+    def get_localized_name(
+        self,
+        provider: typing.Mapping[str, typing.Mapping[str, str]],
+        locale: str,
+    ) -> str:
+        """Get the localized name of the field."""
         if self.i18n is None:
             return self.name
 
@@ -46,14 +56,25 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
 
         return self.i18n[locale]
 
-    def get_localized_value(self, value: object, locale: str) -> object:
+    def get_localized_value(
+        self,
+        value: object,
+        provider: typing.Mapping[str, typing.Mapping[str, str]],
+        locale: str,
+    ) -> object:
+        """Get the localized value of the field.."""
         if self.localizator is not None:
             return self.localizator(value, locale) or value
+
+        if isinstance(value, str):
+            return provider[locale].get(value, value)
 
         return value
 
 
 class LocalizedAPIModelMeta(apimodel.APIModelMeta):
+    """Localized API model metaclass."""
+
     __fields__: typing.Mapping[str, LocalizedFieldInfo]
 
     i18n: typing.Dict[str, typing.Dict[str, str]]
@@ -75,6 +96,7 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
         return self
 
     def set_i18n(self, locale: str, key: str, value: str) -> None:
+        """Set a new i18n entry."""
         self.i18n[locale][key] = value
 
 
@@ -113,7 +135,7 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
             value = apimodel._serialize_attr(attr, private=private, alias=alias)
 
             if locale is not None:
-                value = field.get_localized_value(value, locale)
+                value = field.get_localized_value(value, self.__class__.i18n, locale)
 
             obj[field_name] = value
 

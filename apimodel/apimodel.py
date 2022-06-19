@@ -81,7 +81,7 @@ class APIModelMeta(type):
 
     def __repr__(self) -> str:
         args = ", ".join(f"{k}={v!r}" for k, v in self.__fields__.items())
-        return f"{self.__name__}.__class__({args})"
+        return f"{self.__class__.__name__}({args})"
 
     def __devtools_pretty(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""
@@ -89,26 +89,13 @@ class APIModelMeta(type):
         yield "("
         yield 1
 
-        yield fmt(self.__name__)
-        yield ","
-        yield 0
-        yield fmt(self.__root_validators__)
-        yield ","
-        yield 0
-
-        for k, v in self.__extras__.items():
-            yield k
-            yield "="
-            yield fmt(v)
-            yield ","
-            yield 0
-
-        for k, v in self.__fields__.items():
-            yield k
-            yield "="
-            yield fmt(v)
-            yield ","
-            yield 0
+        yield from utility.devtools_pretty(
+            fmt,
+            self.__name__,
+            self.__root_validators__,
+            **self.__extras__,
+            **self.__fields__,
+        )
 
         yield -1
         yield ")"
@@ -251,9 +238,6 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
         Returns a mapping appropriate for passing to the validator.
         """
-        if obj is None and not kwargs:
-            raise TypeError(f"{cls.__name__} expected at least 1 argument.")
-
         if isinstance(obj, APIModel):
             obj = obj.as_dict()
         if obj is None:
@@ -343,28 +327,6 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     @classmethod
     def __modify_schema__(cls, field_schema: typing.Dict[str, object], *, experimental: bool = False) -> None:
         """Create a schema for pydantic."""
-        # if experimental:
-        #     import pydantic  # noqa: I900
-        #     import pydantic.schema  # noqa: I900
-
-        #     properties: typing.Dict[str, object] = {}
-        #     for attr_name, field in cls.__fields__.items():
-        #         mfield = pydantic.fields.ModelField(
-        #             name=attr_name,
-        #             type_=object,
-        #             class_validators={},
-        #             model_config=pydantic.BaseConfig,
-        #             default=field.default if field.default is not ... else pydantic.fields.Undefined,
-        #             required=field.default is ...,
-        #             alias=field.name,
-        #         )
-        #         for validator in field.validators:
-        #             if isinstance(validator, parser.AnnotationValidator):
-        #                 mfield.type_ = validator.tp
-        #                 break
-
-        #         properties[field.name], _, _ = pydantic.schema.field_schema(mfield, model_name_map={})
-
         field_schema.update(
             type="object",
             properties={field.name: dict(type="any") for field in cls.__fields__.values() if not field.private},

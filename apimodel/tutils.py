@@ -11,12 +11,12 @@ if typing.TYPE_CHECKING:
 if sys.version_info >= (3, 10):
     from types import NoneType, UnionType
 
-    UnionTypes: typing.Set[object] = {typing.Union, UnionType}
-    NoneTypes: typing.Set[object] = {None, NoneType}
+    UnionTypes: typing.Sequence[object] = (typing.Union, UnionType)
+    NoneTypes: typing.Sequence[object] = (None, NoneType)
 
 else:
-    UnionTypes: typing.Set[object] = {typing.Union}
-    NoneTypes: typing.Set[object] = {None, type(None)}
+    UnionTypes: typing.Sequence[object] = (typing.Union,)
+    NoneTypes: typing.Sequence[object] = (None, type(None))
 
 
 # Self

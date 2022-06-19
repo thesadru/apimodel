@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import functools
 import inspect
 import typing
 from unittest.mock import _Call as Call
 
 from . import apimodel, tutils, utility, validation
 
-__all__ = ["cast", "get_validator"]
+__all__ = ["cast", "get_validator", "validate_arguments"]
+
+T = typing.TypeVar("T")
 
 
 class AnnotationValidator(validation.Validator):
@@ -28,7 +31,7 @@ class AnnotationValidator(validation.Validator):
             self.tp = object
 
     def __repr_args__(self) -> typing.Mapping[str, object]:
-        return {"callback": self.callback, "tp": self.tp}
+        return {"callback": self.callback}
 
 
 def as_validator(callback: tutils.ValidatorSig) -> AnnotationValidator:
@@ -55,15 +58,13 @@ def debuggable_deco(func: tutils.AnyCallableT) -> tutils.AnyCallableT:
         if inspect.ismethod(callback) and isinstance(callback.__self__, utility.UniversalAsync):
             callback = callback.__self__.callback
 
-        if not inspect.isfunction(callback):
-            return obj
-
         call = Call((func.__name__, args, kwargs))
         notation = repr(call)[5:]
         if asyncio.iscoroutinefunction(obj):
             notation = "async " + notation
 
-        callback.__qualname__ = notation
+        if inspect.isfunction(callback):
+            callback.__qualname__ = notation
 
         if not hasattr(callback, "__pretty__"):
             callback.__pretty__ = utility.make_pretty_signature(func.__name__, *args, **kwargs)  # type: ignore
@@ -298,6 +299,10 @@ if not typing.TYPE_CHECKING:
 
 
 def normalize_annotation(tp: object) -> object:
+    """Normalize an annotation and remove aliases."""
+    if tp is type(None):  # noqa: E721
+        tp = None
+
     if isinstance(tp, tutils.AnnotatedAlias):
         tp = typing.get_args(tp)[0]
 
@@ -316,13 +321,23 @@ def normalize_annotation(tp: object) -> object:
     return tp
 
 
-def get_validator(tp: object, *, normalize: bool = True) -> AnnotationValidator:
+def _add_tp(callback: tutils.AnyCallableT) -> tutils.AnyCallableT:
+    def wrapper(tp: object, *args: object, **kwargs: object) -> object:
+        tp = normalize_annotation(tp)
+        r = callback(tp, *args, **kwargs)
+        assert isinstance(r, AnnotationValidator)
+        r.tp = tp
+
+        return r
+
+    return typing.cast("tutils.AnyCallableT", wrapper)
+
+
+@_add_tp
+def get_validator(tp: object) -> AnnotationValidator:
     """Get a validator for the given type."""
     # TODO: NamedTuple and TypedDict
     # TODO: pydantic and dataclasses
-
-    if normalize:
-        tp = normalize_annotation(tp)
 
     origin = typing.get_origin(tp) or tp
     args = typing.get_args(tp)
@@ -360,3 +375,33 @@ def cast(tp: object, value: object) -> object:
     """Cast the value to the given type."""
     validator = get_validator(tp)
     return validator(apimodel.APIModel({}), value)
+
+
+def validate_arguments(callback: typing.Callable[..., T]) -> typing.Callable[..., T]:
+    """Validate arguments of a function.
+
+    Inspired by pydantic. Positional-only arguments are not supported because just no.
+    """
+    signature = inspect.signature(callback)
+
+    type_hints = typing.get_type_hints(callback)
+    validators = {name: get_validator(annotation) for name, annotation in type_hints.items()}
+
+    @functools.wraps(callback)
+    def wrapper(*args: object, **kwargs: object) -> object:
+        model = apimodel.APIModel({})
+
+        bound = signature.bind(*args, **kwargs)
+        kwargs = {
+            name: validator(model, bound.arguments[name])
+            for name, validator in validators.items()
+            if name in bound.arguments
+        }
+
+        r = callback(**kwargs)
+        if "return" in validators:
+            r = validators["return"](model, r)
+
+        return r
+
+    return typing.cast("typing.Callable[..., T]", wrapper)

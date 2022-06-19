@@ -89,10 +89,19 @@ class ModelFieldInfo(FieldInfo):
             default = default.default
 
         validator = parser.get_validator(annotation)
-        validator.tp = annotation
         validators.append(validator)
 
         return cls(default, name=name, private=private, validators=validators, **extra)
+
+    @property
+    def annotation_validator(self) -> parser.AnnotationValidator:
+        """Return the validator for the annotation."""
+        return next(validator for validator in self.validators if isinstance(validator, parser.AnnotationValidator))
+
+    @property
+    def tp(self) -> object:
+        """Return the type of the field."""
+        return self.annotation_validator.tp
 
 
 class ExtraInfo(utility.Representation):
