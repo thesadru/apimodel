@@ -1,24 +1,23 @@
 """Model generator from JSON data."""
 from __future__ import annotations
 
-import collections
-import datetime
-import json
-import sys
 import typing
 
-from . import tutils, utility
+from . import parser, tutils, utility
 
 __all__ = ["generate_models"]
 
 JSONType = typing.Union[None, str, int, float, bool, typing.Sequence["JSONType"], typing.Mapping[str, "JSONType"]]
-"""Raw JSON."""
-RawSchemaType = typing.Union[str, typing.Sequence["RawSchemaType"], typing.Mapping[str, "RawSchemaType"]]
-"""Raw schema type."""
-SchemaType = typing.Mapping[
-    str, typing.Tuple[typing.Union[str, typing.Sequence[str]], typing.MutableMapping[str, typing.Any]]
+RawSchema = typing.Union[
+    str,
+    typing.Tuple["RawSchema", ...],
+    typing.List["RawSchema"],
+    typing.Mapping[str, "RawSchema"],
 ]
-"""Output schema type. `{name: (type, field)}`."""
+
+MaybeUnion = tutils.MaybeSequence[str]
+Field = typing.TypedDict("Field", {"name": str, "type": MaybeUnion, "default": object, "array": bool}, total=False)
+Schema = typing.Mapping[str, Field]
 
 T = typing.TypeVar("T")
 
@@ -29,44 +28,75 @@ def to_pascal_case(string: str) -> str:
 
 
 def to_snake_case(string: str) -> str:
-    """Turn pascal case into snake case."""
-    return "".join("_" + x.lower() if x.isupper() else x for x in string)
+    """Turn camel case into snake case."""
+    return "".join(
+        ("_" if i and string[i].isupper() and not string[i : i + 2].isupper() else "") + x.lower()  # noqa: E203
+        for i, x in enumerate(string)
+    )
 
 
-def format_object(values: typing.Union[str, typing.Sequence[str]]) -> str:
-    """Format a union."""
-    if isinstance(values, str):
-        return values
+def format_field_type(field: typing.Union[str, Field]) -> str:
+    """Format a field type."""
+    if isinstance(field, str):
+        return field
 
-    values, old_values = [x for x in values if "None" not in x], values
+    assert "type" in field, "Incomplete Field"
 
-    if "[]" in values[0]:
-        genalias = values.pop(0).replace("[]", "")
-        if len(values) == 1:
-            genalias = genalias + "[{}]"
-        elif len(values) != len(old_values):
-            genalias = genalias + "[typing.Optional[{}]]"
-        else:
-            genalias = genalias + "[typing.Union[{}]]"
-    else:
-        if len(values) != len(old_values):
+    genalias = "{}"
+    if not isinstance(field["type"], str):
+        clean_type, messy_type = [x for x in field["type"] if "None" not in x], field["type"]
+        if len(clean_type) == len(messy_type):
+            genalias = "typing.Union[{}]"
+        elif len(clean_type) == 1:
             genalias = "typing.Optional[{}]"
         else:
-            genalias = "typing.Union[{}]"
+            genalias = "typing.Optional[typing.Union[{}]]"
 
-    return genalias.format(", ".join(values))
+    elif field["type"] == "None":
+        genalias = "typing.Optional[{}]"
+        clean_type = ("object",)
+
+    else:
+        clean_type = (field["type"],)
+
+    if field.get("array", False):
+        genalias = "typing.Sequence[{}]".format(genalias)
+
+    return genalias.format(", ".join(clean_type))
 
 
-def join_union(raw_values: typing.Sequence[T]) -> tutils.MaybeSequence[T]:
-    """Join a union with an emphasis on mappings."""
+def format_field_default(field: Field) -> str:
+    """Format a field default."""
+    data = {k: v for k, v in field.items() if k not in ("type", "array", "default")}
+
+    if "default" in field and not data:
+        return str(field["default"])
+
+    args: typing.Sequence[str] = []
+    if "default" in field:
+        args = [str(field["default"])]
+
+    args += [f"{k}={v}" for k, v in data.items()]
+
+    if not args:
+        return ""
+
+    return f"apimodel.Field({', '.join(args)})"
+
+
+def join_union(raw_values: typing.Sequence[T]) -> tutils.MaybeTuple[T]:
+    """Join a union with an emphasis on mappings.
+
+    Return a tuple if there are multiple values.
+    """
     values = utility.flatten_sequences(raw_values)
     values = tuple({repr(tp): tp for tp in values}.values())
     if "float" in values:
-        values = [x for x in values if x != "int"]
+        values = tuple(x for x in values if x != "int")
 
     if all(isinstance(value, typing.Mapping) for value in values):
         values = typing.cast("typing.Sequence[typing.Mapping[str, T]]", values)
-        mapping: typing.Mapping[str, tutils.MaybeSequence[T]] = {}
+        mapping: typing.Mapping[str, tutils.MaybeTuple[T]] = {}
         for index, value in enumerate(values):
             for k, v in value.items():
                 mapping[k] = join_union([mapping.get(k, v if index == 0 else "None"), v])
@@ -79,14 +109,14 @@ def join_union(raw_values: typing.Sequence[T]) -> tutils.MaybeSequence[T]:
     return values
 
 
-def recognize_json_type(value: JSONType) -> RawSchemaType:
+def recognize_json_type(value: JSONType) -> RawSchema:
     """Recognize JSON type of value."""
     if value in tutils.NoneTypes:
         return "None"
 
     if isinstance(value, str):
         try:
-            datetime.datetime.fromisoformat(value)
+            parser.datetime_validator(NotImplemented, value)
         except ValueError:
             return "str"
         else:
@@ -94,8 +124,8 @@ def recognize_json_type(value: JSONType) -> RawSchemaType:
 
     if isinstance(value, typing.Sequence):
         values = [recognize_json_type(item) for item in value]
-        values.insert(0, "typing.Sequence[]")
-        return join_union(values)
+        clean = join_union(values)
+        return list(clean) if isinstance(clean, tuple) else [clean]
 
     if isinstance(value, typing.Mapping):
         return {name: recognize_json_type(item) for name, item in value.items()}
@@ -105,17 +135,24 @@ def recognize_json_type(value: JSONType) -> RawSchemaType:
 
 def add_schema(
     schema_name: str,
-    raw_schema: typing.Mapping[str, RawSchemaType],
-    schemas: typing.MutableMapping[str, SchemaType],
-) -> SchemaType:
+    raw_schema: typing.Mapping[str, RawSchema],
+    schemas: typing.MutableMapping[str, Schema],
+) -> Schema:
     """Add schema to a collection of previous schemas."""
-    schema: SchemaType = {}
+    schema: Schema = {}
 
     for name, value in raw_schema.items():
-        data: typing.MutableMapping[str, typing.Any] = {}
+        field: Field = {}
+
         name, old_name = to_snake_case(name), name
         if name != old_name:
-            data["name"] = '"' + old_name + '"'
+            field["name"] = '"' + old_name + '"'
+
+        # tuple = union, list = array of union
+        if isinstance(value, list):
+            field["array"] = True
+            if len(value) == 1:
+                value = value[0]
 
         if isinstance(value, typing.Sequence) and not isinstance(value, str):
             union: typing.Sequence[str] = []
@@ -127,15 +164,22 @@ def add_schema(
                 else:
                     union.append(typing.cast(str, x))
 
-            schema[name] = (join_union(union), data)
+            field["type"] = join_union(union)
+            schema[name] = field
 
         elif isinstance(value, typing.Mapping):
             unique_name = to_pascal_case(schema_name + "_" + name)
             add_schema(unique_name, value, schemas)
-            schema[name] = unique_name, data
+
+            field["type"] = unique_name
+            schema[name] = field
 
         else:
-            schema[name] = value, data
+            field["type"] = value
+            schema[name] = field
+
+        if "None" in field.get("type", ""):
+            field["default"] = "None"
 
     if not schema_name:
         schema_name = "Root"
@@ -144,13 +188,13 @@ def add_schema(
     return schema
 
 
-def create_schemas(data: JSONType) -> typing.Mapping[str, SchemaType]:
+def create_schemas(data: JSONType) -> typing.Mapping[str, Schema]:
     """Create raw schemas from json data."""
     raw_schema = recognize_json_type(data)
     if isinstance(raw_schema, typing.Sequence):
         raw_schema = {"root": raw_schema}
 
-    schemas: typing.MutableMapping[str, SchemaType] = collections.OrderedDict()
+    schemas: typing.MutableMapping[str, Schema] = {}
     add_schema("", raw_schema, schemas)
 
     return schemas
@@ -164,27 +208,16 @@ def generate_models(data: JSONType) -> str:
 
     for schema_name, schema in schemas.items():
         code += f"class {schema_name}(apimodel.APIModel):\n"
-        for name, (value, data) in schema.items():
-            value = format_object(value)
+        for name, field in schema.items():
+            value = format_field_type(field)
+            default = format_field_default(field)
 
             code += f"    {name}: {value}"
-            if "Optional" in value:
-                data["default"] = "None"
-
-            if data:
-                code += " = "
-                if "default" in data and len(data) == 1:
-                    code += data["default"]
-                else:
-                    args = ([data.pop("default")] if "default" in data else []) + [f"{k}={v}" for k, v in data.items()]
-                    code += f"apimodel.Field({', '.join(args)})"
+            if default:
+                code += " = " + default
 
             code += "\n"
 
         code += "\n\n"
 
     return code.strip() + "\n"
-
-
-if __name__ == "__main__":
-    sys.stdout.write(generate_models(json.load(sys.stdin)))

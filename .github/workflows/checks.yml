@@ -39,7 +39,7 @@ jobs:
           python -m pip install nox
       - name: Run tests
         run: |
-          python -m nox -s test --verbose
+          python -m nox -s test --verbose -- -vv --showlocals
   type-check:
     runs-on: ubuntu-latest
 

@@ -17,7 +17,7 @@ __all__ = ["Representation", "devtools_pretty"]
 T = typing.TypeVar("T")
 
 
-def flatten_sequences(*sequences: tutils.MaybeSequence[T]) -> typing.Sequence[T]:
+def flatten_sequences(*sequences: tutils.MaybeRecursiveSequence[T]) -> typing.Sequence[T]:
     """Flatten a possibly nested sequence."""
     joined: typing.Sequence[T] = []
 
@@ -30,8 +30,18 @@ def flatten_sequences(*sequences: tutils.MaybeSequence[T]) -> typing.Sequence[T]
     return joined
 
 
-def devtools_pretty(fmt: typing.Callable[[object], str], *args: object, **kwargs: object) -> typing.Iterator[object]:
+def devtools_pretty(
+    fmt: typing.Callable[[object], str],
+    *args: object,
+    __name__: typing.Optional[str],
+    **kwargs: object,
+) -> typing.Iterator[object]:
     """Format args and kwargs for devtools."""
+    if __name__:
+        yield __name__
+        yield "("
+        yield 1
+
     for v in args:
         yield fmt(v)
         yield ","
@@ -44,20 +54,17 @@ def devtools_pretty(fmt: typing.Callable[[object], str], *args: object, **kwargs
         yield ","
         yield 0
 
+    if __name__:
+        yield -1
+        yield ")"
+
 
 def make_pretty_signature(name: str, *args: object, **kwargs: object) -> typing.Callable[..., typing.Iterator[object]]:
     """Devtools pretty formatting for a higher order functions."""
 
     class Dummy:
         def __pretty__(self, fmt: typing.Callable[[object], str], **options: object) -> typing.Iterator[object]:
-            yield name
-            yield "("
-            yield 1
-
-            yield from devtools_pretty(fmt, *args, **kwargs)
-
-            yield -1
-            yield ")"
+            yield from devtools_pretty(fmt, *args, __name__=name, **kwargs)
 
     return Dummy().__pretty__
 
@@ -80,9 +87,8 @@ class Representation:
     __slots__ = ()
 
     def __repr_args__(self) -> typing.Mapping[str, object]:
-        if hasattr(self, "__slots__"):
-            args = {k: getattr(self, k) for k in get_slots(self) if hasattr(self, k)}
-        else:
+        args = {k: getattr(self, k) for k in get_slots(self) if hasattr(self, k)}
+        if not args:
             args = self.__dict__
 
         return {k: v for k, v in args.items() if k[0] != "_" and v != Ellipsis}
@@ -93,44 +99,7 @@ class Representation:
 
     def __pretty__(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""
-        yield type(self).__name__
-        yield "("
-        yield 1
-
-        yield from devtools_pretty(fmt, **self.__repr_args__())
-
-        yield -1
-        yield ")"
-
-
-class Proxy:
-    """Proxy object with possible setattr."""
-
-    obj: object
-
-    def __init__(self, obj: object) -> None:
-        object.__setattr__(self, "__proxy_obj", obj)
-
-    def __getattribute__(self, name: str) -> object:
-        if name == "_Proxy__proxy_obj":
-            return object.__getattribute__(self, "__proxy_obj")
-
-        return self.__proxy_obj.__getattribute__(name)
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self, name)
-
-    def __setattr__(self, name: str, value: object) -> None:
-        try:
-            setattr(self.__proxy_obj, name, value)
-        except AttributeError:
-            object.__setattr__(self, name, value)
-
-    def __dir__(self) -> typing.Iterable[str]:
-        return self.__proxy_obj.__dir__()
-
-    def __call__(self, *args: object, **kwargs: object) -> object:
-        return self.__proxy_obj.__call__(*args, **kwargs)  # type: ignore
+        yield from devtools_pretty(fmt, __name__=self.__class__.__name__, **self.__repr_args__())
 
 
 class UniversalAsync(typing.Generic[P, T]):

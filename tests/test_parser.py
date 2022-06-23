@@ -94,7 +94,7 @@ def test_literal_validator(
 @pytest.mark.parametrize(
     ("collection_type", "inner_validator", "value", "expected"),
     [
-        (typing.List[str], apimodel.parser.cast_validator(str), ["foo", "bar"], ["foo", "bar"]),
+        (typing.MutableSequence[str], apimodel.parser.cast_validator(str), ["foo", "bar"], ["foo", "bar"]),
         (typing.Sequence[int], apimodel.parser.cast_validator(int), {1, 2}, (1, 2)),
         (typing.Set[bool], apimodel.parser.cast_validator(bool), [0, 1], frozenset({False, True})),
         (
@@ -119,7 +119,7 @@ def test_collection_validator(
     ("mapping_type", "key_validator", "value_validator", "value", "expected"),
     [
         (
-            typing.Dict[str, str],
+            typing.Mapping[str, str],
             apimodel.parser.cast_validator(str),
             apimodel.parser.cast_validator(str),
             {"foo": "bar"},
@@ -160,9 +160,17 @@ def test_union_validator(
         (object, "foo", "foo"),
         (int, "42", 42),
         (typing.Union[int, float], "4.2", 4.2),
-        (apimodel.tutils.Annotated[int, "metadata"], "42", 42),
+        (apimodel.tutils.Annotated["typing.TypedDict", typing.Dict[str, int]], {"a": "42"}, {"a": 42}),
         (typing.TypeVar("T", bound=str), 42, "42"),
     ],
 )
 def test_cast(tp: type, value: object, expected: object) -> None:
     assert apimodel.parser.cast(tp, value) == expected
+
+
+def test_validate_arguments() -> None:
+    @apimodel.validate_arguments
+    def callback(a: float, b: float) -> int:
+        return a + b  # type: ignore
+
+    assert callback("4.2", "3.1") == 7

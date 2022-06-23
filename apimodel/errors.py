@@ -1,9 +1,10 @@
 """Pretty errors."""
 from __future__ import annotations
 
+import contextlib
 import typing
 
-from . import apimodel, utility
+from . import apimodel, tutils, utility
 
 __all__ = ["ValidationError"]
 
@@ -12,26 +13,37 @@ Loc = typing.Tuple[typing.Union[int, str], ...]
 ErrorList = typing.Union[typing.Sequence["ErrorList"], "LocError"]
 
 
-class LocError(utility.Representation):
+class LocError(utility.Representation, Exception):
     """Error with a location."""
 
-    exc: Exception
+    __slots__ = ("error", "loc")
+
+    error: Exception
     loc: Loc
 
-    def __init__(self, exc: Exception, loc: typing.Union[str, Loc] = "__root__") -> None:
-        self.exc = exc
+    def __init__(self, error: Exception, loc: typing.Union[str, int, Loc] = "__root__") -> None:
+        self.error = error
         self.loc = loc if isinstance(loc, tuple) else (loc,)
+
+        super().__init__(str(error))
+
+    def __instancecheck__(self, instance: typing.Any) -> bool:
+        return isinstance(instance, self.error.__class__)
 
 
 class ValidationError(utility.Representation, ValueError):
     """Pretty validation error inspired by pydantic."""
 
+    __slots__ = ("errors", "model")
+
     errors: typing.Sequence[LocError]
     model: typing.Type[apimodel.APIModel]
 
-    def __init__(self, errors: typing.Collection[ErrorList], model: typing.Type[apimodel.APIModel]) -> None:
-        self.errors = typing.cast("typing.Sequence[LocError]", utility.flatten_sequences(*errors))
+    def __init__(self, *errors: ErrorList, model: typing.Type[apimodel.APIModel]) -> None:
+        self.errors = utility.flatten_sequences(*errors)
         self.model = model
+
+        super().__init__(self.errors)
 
     def __str__(self) -> str:
         errors = list(flatten_errors(self.errors))
@@ -52,16 +64,57 @@ def flatten_errors(
             if loc:
                 error_loc = loc + error_loc
 
-            if isinstance(error.exc, ValidationError):
-                yield from flatten_errors(error.exc.errors, error_loc)
+            if isinstance(error.error, ValidationError):
+                yield from flatten_errors(error.error.errors, loc=error_loc)
             else:
-                yield (error_loc, str(error.exc))
+                yield (error_loc, repr(error.error))
 
         else:
             yield from flatten_errors(error, loc=loc)
 
 
-def maybe_raise_error(*errors: ErrorList, model: typing.Any) -> None:
-    """Raise errors if any."""
-    if errors:
-        raise ValidationError(errors, model)
+class ErrorCatcher:
+    """Catch errors and append to a list."""
+
+    errors: typing.MutableSequence[LocError]
+    model: typing.Type[apimodel.APIModel]
+
+    def __init__(self, model: tutils.MaybeType[apimodel.APIModel]) -> None:
+        if not isinstance(model, type):
+            model = type(model)
+
+        self.errors = []
+        self.model = model
+
+    def add_error(self, error: Exception, loc: typing.Union[str, int, Loc]) -> None:
+        """Add an error to the list."""
+        self.errors.append(LocError(error, loc))
+
+    @contextlib.contextmanager
+    def catch(self, loc: typing.Union[str, int, Loc] = "__root__") -> typing.Iterator[None]:
+        """Catch errors and append to a list."""
+        try:
+            yield
+        except Exception as e:
+            self.errors.append(LocError(e, loc))
+
+    def __enter__(self) -> typing.ContextManager[None]:
+        return self.catch()
+
+    def raise_errors(self) -> None:
+        """Raise errors."""
+        if self.errors:
+            raise ValidationError(self.errors, model=self.model)
+
+
+@contextlib.contextmanager
+def catch_errors(model: tutils.MaybeType[apimodel.APIModel]) -> typing.Iterator[ErrorCatcher]:
+    """Catch errors and raise a ValidationError if at least one is present."""
+    if not isinstance(model, type):
+        model = type(model)
+
+    catcher = ErrorCatcher(model)
+    try:
+        yield catcher
+    finally:
+        catcher.raise_errors()

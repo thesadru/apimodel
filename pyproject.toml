@@ -30,16 +30,21 @@ reportIncompatibleMethodOverride = "none"  # This relies on ordering for keyword
 reportUnusedFunction = "none"  # Makes usage of validators impossible
 reportPrivateUsage = "none"
 
-[tool.mypy]
-warn_unreachable = false
+[tool.coverage.run]
+source = ["apimodel"]
+omit = ["**/__init__.py", "**/__main__.py"]
 
-disallow_untyped_defs = true
-ignore_missing_imports = true
-install_types = true
-non_interactive = true
-
-# pyright
-warn_unused_ignores = false
-warn_redundant_casts = false
-allow_redefinition = true
-disable_error_code = ["return-value"]
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+sort = "cover"
+exclude_lines = [
+    "\\#\\s*pragma: no cover$",
+    "^\\s*raise$",
+    "^\\s*pass$",
+    "^\\s*except ImportError:$",
+    "^if __name__ == ['\"]__main__['\"]:$",
+    "^\\s*\\.\\.\\.$",
+    "^\\s*(el)?if typing.TYPE_CHECKING:$",
+    "def __pretty__(.*):$",
+]

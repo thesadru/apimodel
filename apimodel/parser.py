@@ -8,7 +8,7 @@ import inspect
 import typing
 from unittest.mock import _Call as Call
 
-from . import apimodel, tutils, utility, validation
+from . import apimodel, errors, tutils, utility, validation
 
 __all__ = ["cast", "get_validator", "validate_arguments"]
 
@@ -95,10 +95,7 @@ def datetime_validator(value: typing.Union[datetime.datetime, str, int, float]) 
     # unsupported by the builtin parser
     value = value.rstrip("Z")
     value = datetime.datetime.fromisoformat(value)
-    if value.tzinfo is None:
-        value = value.replace(tzinfo=datetime.timezone.utc)
-
-    return value.astimezone(datetime.timezone.utc)
+    return datetime_validator.callback(value)
 
 
 @as_validator
@@ -186,8 +183,10 @@ def collection_validator(
 
         items: typing.Collection[object] = []
 
-        for item in value:
-            items.append(inner_validator(model, item))
+        with errors.catch_errors(model) as catcher:
+            for index, item in enumerate(value):
+                with catcher.catch(loc=index):
+                    items.append(inner_validator(model, item))
 
         return collection_type(items)
 
@@ -215,8 +214,10 @@ def mapping_validator(
 
         mapping: typing.Mapping[object, object] = {}
 
-        for key in value:
-            mapping[key_validator(model, key)] = value_validator(model, value[key])
+        with errors.catch_errors(model) as catcher:
+            for key in value:
+                with catcher.catch(loc=str(key)):
+                    mapping[key_validator(model, key)] = value_validator(model, value[key])
 
         return mapping_type(mapping)
 
@@ -237,17 +238,12 @@ def union_validator(validators: typing.Sequence[validation.Validator]) -> Annota
 
     @utility.as_universal
     def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
-        errors: typing.List[Exception] = []
-
+        catcher = errors.ErrorCatcher(model)
         for validator in validators:
-            try:
-                x = yield validator(model, value)
-            except (ValueError, TypeError) as e:
-                errors.append(e)
-            else:
-                return x
+            with catcher.catch():
+                return (yield validator(model, value))
 
-        raise errors[0]
+        catcher.raise_errors()
 
     if any(validator.isasync for validator in validators):
         return as_validator(validator.asynchronous)
@@ -304,7 +300,7 @@ def normalize_annotation(tp: object) -> object:
         tp = None
 
     if isinstance(tp, tutils.AnnotatedAlias):
-        tp = typing.get_args(tp)[0]
+        tp = tp.__metadata__[0] if tp.__metadata__ else tp.__origin__  # type: ignore # compatibility with 3.8
 
     if isinstance(tp, typing.TypeVar):
         if tp.__bound__:
@@ -368,7 +364,7 @@ def get_validator(tp: object) -> AnnotationValidator:
     if isinstance(tp, type):
         return arbitrary_validator(tp)
 
-    raise TypeError(f"Unknown annotation: {tp}. Use Annotated[object, {tp}] to disable the default validator.")
+    raise TypeError(f"Unknown annotation: {tp}. Use Annotated[{tp}, object] to disable the default validator.")
 
 
 def cast(tp: object, value: object) -> object:

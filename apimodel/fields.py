@@ -95,11 +95,13 @@ class ModelFieldInfo(FieldInfo):
 class ExtraInfo(utility.Representation):
     """Descriptor for a special extra attribute."""
 
-    __slots__ = ("name",)
+    __slots__ = ("default", "name")
 
+    default: object
     name: str
 
-    def __init__(self, name: str = "") -> None:
+    def __init__(self, default: object = ..., name: str = "") -> None:
+        self.default = default
         self.name = name
 
 
@@ -122,6 +124,6 @@ def Field(
     )
 
 
-def Extra(name: str = "") -> typing.Any:
+def Extra(default: object = ..., name: str = "") -> typing.Any:
     """Create a new ExtraInfo."""
-    return ExtraInfo(name=name)
+    return ExtraInfo(default, name=name)

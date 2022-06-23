@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import pathlib
 import typing
 
@@ -33,7 +34,7 @@ def install_requirements(session: nox.Session, *requirements: str, literal: bool
         files += [f"./dev-requirements/{requirement}-requirements.txt" for requirement in requirements]
         requirements = tuple(arg for file in files for arg in ("-r", file))
 
-    session.install("--upgrade", *requirements, silent=not isverbose())
+    session.install("--upgrade", "pip", *requirements, silent=not isverbose())
 
 
 @nox.session()
@@ -75,6 +76,22 @@ def test(session: nox.Session) -> None:
     """Run this project's tests using pytest."""
     install_requirements(session, "pytest")
 
+    cov_args: typing.Sequence[str] = []
+
+    if "--no-cov" in session.posargs:
+        session.posargs.remove("--no-cov")
+    else:
+        cov_args = [
+            "--cov",
+            PACKAGE,
+            "--cov-report",
+            "term",
+            "--cov-report",
+            "html:coverage_html",
+            "--cov-report",
+            "xml",
+        ]
+
     session.run(
         "python",
         "-m",
@@ -83,16 +100,12 @@ def test(session: nox.Session) -> None:
         "-r",
         "sfE",
         *verbose_args(),
-        "--cov",
-        PACKAGE,
-        "--cov-report",
-        "term",
-        "--cov-report",
-        "html:coverage_html",
-        "--cov-report",
-        "xml",
+        *cov_args,
         *session.posargs,
     )
+
+    if cov_args:
+        session.log(f"HTML coverage report: {os.path.abspath('coverage_html/index.html')}")
 
 
 @nox.session(name="type-check")

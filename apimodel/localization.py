@@ -48,13 +48,12 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
         locale: str,
     ) -> str:
         """Get the localized name of the field."""
-        if self.i18n is None:
-            return self.name
+        i18n = self.i18n or self.name
 
-        if isinstance(self.i18n, str):
-            return provider[locale].get(self.i18n, self.name)
+        if isinstance(i18n, str):
+            return provider[locale].get(i18n, self.name)
 
-        return self.i18n[locale]
+        return i18n[locale]
 
     def get_localized_value(
         self,
@@ -77,7 +76,7 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
 
     __fields__: typing.Mapping[str, LocalizedFieldInfo]
 
-    i18n: typing.Dict[str, typing.Dict[str, str]]
+    i18n: typing.ClassVar[typing.Dict[str, typing.Dict[str, str]]] = collections.defaultdict(dict)
     """Internationalization mapping of `{locale: {key: "localized string"}}`."""
 
     def __new__(
@@ -91,8 +90,6 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
         self = super().__new__(cls, name, bases, namespace, field_cls=field_cls or LocalizedFieldInfo)
         self = typing.cast(typing_extensions.Self, self)
 
-        self.i18n = collections.defaultdict(dict)
-
         return self
 
     def set_i18n(self, locale: str, key: str, value: str) -> None:
@@ -103,7 +100,7 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
 class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
     """Localized API model."""
 
-    locale: typing.Optional[str] = fields.Extra()
+    locale: typing.Optional[str] = fields.Extra(None)
 
     def as_dict(
         self,
@@ -111,6 +108,7 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
         private: bool = False,
         alias: typing.Optional[bool] = None,
         locale: typing.Optional[str] = None,
+        **options: object,
     ) -> tutils.JSONMapping:
         """Create a mapping from the model instance."""
         obj: tutils.JSONMapping = {}
@@ -132,7 +130,8 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
                 field_name = attr_name
 
             attr = self.__dict__[attr_name]
-            value = apimodel._serialize_attr(attr, private=private, alias=alias)
+
+            value = apimodel._serialize_attr(attr, private=private, alias=alias, locale=locale)
 
             if locale is not None:
                 value = field.get_localized_value(value, self.__class__.i18n, locale)

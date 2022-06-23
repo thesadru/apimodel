@@ -15,6 +15,7 @@ APIModelT = typing.TypeVar("APIModelT", bound="APIModel")
 
 
 def _get_ordered(validators: typing.Sequence[ValidatorT], order: validation.Order) -> typing.Sequence[ValidatorT]:
+    """Get validators that fall into the selected order category."""
     return [validator for validator in validators if order <= validator.order < (order + 10)]
 
 
@@ -23,9 +24,23 @@ def _serialize_attr(attr: object, **kwargs: object) -> object:
     if isinstance(attr, APIModel):
         return attr.as_dict(**kwargs)
     if isinstance(attr, typing.Collection) and not isinstance(attr, str):
-        return [_serialize_attr(x) for x in typing.cast("typing.Collection[object]", attr)]
+        return [_serialize_attr(x, **kwargs) for x in typing.cast("typing.Collection[object]", attr)]
 
     return attr
+
+
+def _to_mapping(obj: object, **kwargs: object) -> typing.Mapping[str, object]:
+    """Turn an arbitrary object into a mapping for APIModel."""
+    if isinstance(obj, APIModel):
+        obj = obj.as_dict()
+
+    if obj is None:
+        obj = {}
+
+    if not isinstance(obj, typing.Mapping):
+        raise TypeError(f"Unparsable object: {obj}")
+
+    return {**obj, **kwargs}
 
 
 class APIModelMeta(type):
@@ -85,20 +100,14 @@ class APIModelMeta(type):
 
     def __devtools_pretty(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""
-        yield self.__class__.__name__
-        yield "("
-        yield 1
-
         yield from utility.devtools_pretty(
             fmt,
             self.__name__,
             self.__root_validators__,
+            __name__=self.__class__.__name__,
             **self.__extras__,
             **self.__fields__,
         )
-
-        yield -1
-        yield ")"
 
     if not typing.TYPE_CHECKING:
 
@@ -134,24 +143,22 @@ class APIModelMeta(type):
         If an instance is not passed in, a dummy instance will be created.
         """
         if instance is None:
-            instance = typing.cast("APIModel", object.__new__(self))  # type: ignore
+            instance = APIModel._empty()
 
-        ers: typing.Sequence[errors.LocError] = []
+        self = typing.cast("typing.Type[APIModel]", self)
 
         # =============================
         # INITIAL ROOT
-        for validator in _get_ordered(self.__root_validators__, order=validation.Order.INITIAL_ROOT):
-            try:
-                obj = yield validator(instance, obj)
-            except Exception as e:
-                ers.append(errors.LocError(e))
 
-        errors.maybe_raise_error(*ers, model=self)
+        with errors.catch_errors(self) as catcher:
+            for validator in _get_ordered(self.__root_validators__, order=validation.Order.INITIAL_ROOT):
+                with catcher.catch():
+                    obj = yield validator(instance, obj)
 
         obj = dict(obj)
 
         # =============================
-        # ALIAS
+        # ALIAS / EXTRAS
         new_obj: tutils.JSONMapping = {}
 
         for attr_name, field in self.__fields__.items():
@@ -162,35 +169,31 @@ class APIModelMeta(type):
                 setattr(instance, attr_name, obj[field.name])
                 new_obj[attr_name] = obj[field.name]
 
-        # =============================
-        # EXTRAS
         if extras:
-            for attr_name, extra in self.__extras__.items():
-                if extra.name not in obj:
-                    ers.append(errors.LocError(TypeError(f"Missing required field: {attr_name!r}"), attr_name))
-
-                setattr(instance, attr_name, obj[extra.name])
-
-        errors.maybe_raise_error(*ers, model=self)
+            with errors.catch_errors(self) as catcher:
+                for attr_name, extra in self.__extras__.items():
+                    if extra.name in obj:
+                        setattr(instance, attr_name, obj[extra.name])
+                    elif extra.default is not ...:
+                        setattr(instance, attr_name, extra.default)
+                    else:
+                        catcher.add_error(TypeError(f"Missing required extra field: {attr_name!r}"), loc=attr_name)
 
         obj = new_obj
 
         # =============================
         # ROOT
-        for validator in _get_ordered(self.__root_validators__, order=validation.Order.ROOT):
-            try:
-                obj = yield validator(instance, obj)
-            except Exception as e:
-                ers.append(errors.LocError(e))
-
-        errors.maybe_raise_error(*ers, model=self)
+        with errors.catch_errors(self) as catcher:
+            for validator in _get_ordered(self.__root_validators__, order=validation.Order.ROOT):
+                with catcher.catch():
+                    obj = yield validator(instance, obj)
 
         # =============================
-        for attr_name, field in self.__fields__.items():
-            if attr_name not in obj:
-                ers.append(errors.LocError(TypeError(f"Missing required field: {attr_name!r}"), attr_name))
-
-        errors.maybe_raise_error(*ers, model=self)
+        # FIELD CHECK
+        with errors.catch_errors(self) as catcher:
+            for attr_name, field in self.__fields__.items():
+                if attr_name not in obj:
+                    catcher.add_error(TypeError(f"Missing required field: {attr_name!r}"), loc=attr_name)
 
         obj = dict(obj)
 
@@ -198,26 +201,20 @@ class APIModelMeta(type):
         # VALIDATOR
         orders = (validation.Order.VALIDATOR, validation.Order.ANNOTATION, validation.Order.POST_VALIDATOR)
         for order in orders:
-            for attr_name, field in self.__fields__.items():
-                for validator in _get_ordered(field.validators, order=order):
-                    try:
-                        obj[attr_name] = yield validator(instance, obj[attr_name])
-                    except Exception as e:
-                        ers.append(errors.LocError(e, attr_name))
-
-                    setattr(instance, attr_name, obj[attr_name])
-
-            errors.maybe_raise_error(*ers, model=self)
+            # order is next to arbitrary, only here because of ANNOTATION
+            with errors.catch_errors(self) as catcher:
+                for attr_name, field in self.__fields__.items():
+                    for validator in _get_ordered(field.validators, order=order):
+                        with catcher.catch(loc=attr_name):
+                            obj[attr_name] = yield validator(instance, obj[attr_name])
+                            setattr(instance, attr_name, obj[attr_name])
 
         # =============================
         # FINAL ROOT
-        for validator in _get_ordered(self.__root_validators__, order=validation.Order.FINAL_ROOT):
-            try:
-                obj = yield validator(instance, obj)
-            except Exception as e:
-                ers.append(errors.LocError(e))
-
-        errors.maybe_raise_error(*ers, model=self)
+        with errors.catch_errors(self) as catcher:
+            for validator in _get_ordered(self.__root_validators__, order=validation.Order.FINAL_ROOT):
+                with catcher.catch():
+                    obj = yield validator(instance, obj)
 
         # =============================
         return obj
@@ -266,26 +263,6 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         return cls.sync_create(obj, **kwargs)
 
     @classmethod
-    def _check_init_args(
-        cls,
-        obj: typing.Optional[object] = None,
-        **kwargs: object,
-    ) -> tutils.JSONMapping:
-        """Check the arguments passed to the constructor.
-
-        Returns a mapping appropriate for passing to the validator.
-        """
-        if isinstance(obj, APIModel):
-            obj = obj.as_dict()
-        if obj is None:
-            obj = {}
-
-        if not isinstance(obj, typing.Mapping):
-            raise TypeError(f"Unparsable object: {obj}")
-
-        return {**obj, **kwargs}
-
-    @classmethod
     def sync_create(
         cls: typing.Type[APIModelT],
         obj: typing.Optional[object] = None,
@@ -298,10 +275,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         if isinstance(obj, cls):
             return obj
 
-        obj = cls._check_init_args(obj, **kwargs)
-
         self = super().__new__(cls)
-        self.update_model_sync(obj)
+        self.update_model_sync(_to_mapping(obj, **kwargs))
         return self
 
     @classmethod
@@ -314,10 +289,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         if isinstance(obj, cls):
             return obj
 
-        obj = cls._check_init_args(obj, **kwargs)
-
         self = super().__new__(cls)
-        await self.update_model(obj)
+        await self.update_model(_to_mapping(obj, **kwargs))
         return self
 
     def update_model_sync(self, obj: tutils.JSONMapping) -> tutils.JSONMapping:
@@ -328,7 +301,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         """Update a model instance asynchronously."""
         return await self.__class__.validate(obj, instance=self, extras=True)
 
-    def as_dict(self, *, private: bool = False, alias: bool = True) -> tutils.JSONMapping:
+    def as_dict(self, *, private: bool = False, alias: bool = True, **options: object) -> tutils.JSONMapping:
         """Create a mapping from the model instance."""
         obj: tutils.JSONMapping = {}
 
@@ -368,3 +341,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             type="object",
             properties={field.name: dict(type="any") for field in cls.__fields__.values() if not field.private},
         )
+
+    @classmethod
+    def _empty(cls) -> APIModel:
+        """Return an empty base APIModel."""
+        return super().__new__(cls)

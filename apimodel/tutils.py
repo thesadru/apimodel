@@ -1,4 +1,4 @@
-"""Typing utils."""
+"""Backwards-compatible types and typing utilities.."""
 from __future__ import annotations
 
 import sys
@@ -29,6 +29,17 @@ else:
         from typing_extensions import Self
     except ImportError:
         Self = typing.Any
+
+# ParamSpec
+if sys.version_info >= (3, 10):
+    ParamSpec = typing.ParamSpec
+elif typing.TYPE_CHECKING:
+    from typing_extensions import ParamSpec  # type: ignore # noqa
+else:
+    try:
+        from typing_extensions import ParamSpec  # type: ignore # noqa
+    except ImportError:
+        ParamSpec = typing.TypeVar
 
 # GenericAlias
 if sys.version_info >= (3, 9):
@@ -63,7 +74,10 @@ T1 = typing.TypeVar("T1")
 T2 = typing.TypeVar("T2")
 
 MaybeSequence = typing.Union[T, typing.Sequence[T]]
+MaybeRecursiveSequence = typing.Union[T, typing.Sequence["MaybeRecursiveSequence[T]"]]
+MaybeTuple = typing.Union[T, typing.Tuple[T, ...]]
 MaybeAwaitable = typing.Union[T, typing.Awaitable[T]]
+MaybeType = typing.Union[T, typing.Type[T]]
 
 JSONMapping = typing.Mapping[str, object]
 AnyCallable = typing.Callable[..., typing.Any]
@@ -86,6 +100,9 @@ ValidatorSig = typing.Union[
 def lenient_issubclass(obj: object, tp: typing.Type[T]) -> typing_extensions.TypeGuard[typing.Type[T]]:
     """More lenient issubclass."""
     if isinstance(tp, GenericAlias):
-        return obj == tp
+        if obj == tp:
+            return True
+
+        tp = tp.__origin__  # type: ignore  # apparently Never
 
     return isinstance(obj, type) and issubclass(obj, tp)

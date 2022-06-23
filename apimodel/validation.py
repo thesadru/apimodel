@@ -38,7 +38,7 @@ class BaseValidator(utility.Representation):
     order: int
     bound: bool
 
-    def __init__(self, callback: tutils.AnyCallable, *, order: int):
+    def __init__(self, callback: tutils.AnyCallable, *, order: int) -> None:
         self.callback = callback
         self.order = order
 
@@ -87,7 +87,7 @@ class Validator(BaseValidator):
 class RootValidator(BaseValidator):
     """Root validator for an entire model."""
 
-    def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.INITIAL_ROOT):
+    def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.INITIAL_ROOT) -> None:
         super().__init__(callback, order=order)
 
     def __call__(self, model: object, values: tutils.JSONMapping) -> tutils.MaybeAwaitable[tutils.JSONMapping]:
