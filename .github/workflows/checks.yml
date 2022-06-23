@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10"]
+        python-version: ["3.8", "3.9", "3.10", "3.11.0-beta.3"]
 
     steps:
       - uses: actions/checkout@v3
@@ -39,7 +39,44 @@ jobs:
           python -m pip install nox
       - name: Run tests
         run: |
-          python -m nox -s test --verbose -- -vv --showlocals
+          python -m nox -s test --verbose -- -vv --showlocals --cov-append
+          mv .coverage .coverage.${{ matrix.python-version }}
+      - name: Upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: .coverage.${{ matrix.python-version }}
+          retention-days: 1
+          if-no-files-found: error
+  upload-coverage:
+    needs: [test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+
+      - name: Download coverage
+        uses: actions/download-artifact@v3
+        with:
+          name: coverage
+
+      - name: Combine coverage
+        run: |
+          pip install -r ./dev-requirements/pytest-requirements.txt
+          coverage combine
+          coverage xml -i
+      - name: Upload coverage to codeclimate
+        uses: paambaati/codeclimate-action@v3.0.0
+        env:
+          CC_TEST_REPORTER_ID: 138a94f60b31ec374b5db1db011805a16ead822e87051d0358acae0cc6457295
+        with:
+          coverageLocations: .coverage.xml:coverage.py
   type-check:
     runs-on: ubuntu-latest
 
