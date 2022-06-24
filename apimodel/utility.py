@@ -3,18 +3,12 @@ from __future__ import annotations
 
 import typing
 
-if typing.TYPE_CHECKING:
-    import typing_extensions
-
-    P = typing_extensions.ParamSpec("P")
-else:
-    P = typing.TypeVar("P")
-
 from . import tutils
 
 __all__ = ["Representation", "devtools_pretty"]
 
 T = typing.TypeVar("T")
+P = tutils.ParamSpec("P")
 
 
 def flatten_sequences(*sequences: tutils.MaybeRecursiveSequence[T]) -> typing.Sequence[T]:
@@ -71,8 +65,11 @@ def make_pretty_signature(name: str, *args: object, **kwargs: object) -> typing.
 
 def get_slots(cls: object) -> typing.Collection[str]:
     """Get all the slots for a class."""
+    if not isinstance(cls, type):
+        cls = cls.__class__
+
     slots: typing.Set[str] = set()
-    for subclass in cls.__class__.mro():
+    for subclass in cls.mro():
         slots.update(getattr(subclass, "__slots__", ()))
 
     return slots
@@ -88,7 +85,7 @@ class Representation:
 
     def __repr_args__(self) -> typing.Mapping[str, object]:
         args = {k: getattr(self, k) for k in get_slots(self) if hasattr(self, k)}
-        if not args:
+        if not args and hasattr(self, "__dict__"):
             args = self.__dict__
 
         return {k: v for k, v in args.items() if k[0] != "_" and v != Ellipsis}
@@ -104,6 +101,8 @@ class Representation:
 
 class UniversalAsync(typing.Generic[P, T]):
     """Compatibility for both sync and async callbacks."""
+
+    __slots__ = ("callback",)
 
     callback: typing.Callable[P, tutils.UniversalAsyncGenerator[T]]
 

@@ -4,15 +4,18 @@ from __future__ import annotations
 import collections
 import typing
 
-import typing_extensions
-
 from . import apimodel, fields, tutils
+
+if typing.TYPE_CHECKING:
+    import typing_extensions
 
 __all__ = ["LocalizedAPIModel"]
 
 
 class LocalizedFieldInfo(fields.ModelFieldInfo):
     """Complete information about a localized field."""
+
+    __slots__ = ("i18n", "localizator")
 
     i18n: typing.Optional[typing.Union[str, typing.Mapping[str, str]]]
     """Localized field names."""
@@ -86,9 +89,11 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
         namespace: typing.Dict[str, object],
         *,
         field_cls: typing.Optional[typing.Type[LocalizedFieldInfo]] = None,
+        slots: typing.Optional[bool] = None,
+        **options: object,
     ) -> typing_extensions.Self:
-        self = super().__new__(cls, name, bases, namespace, field_cls=field_cls or LocalizedFieldInfo)
-        self = typing.cast(typing_extensions.Self, self)
+        self = super().__new__(cls, name, bases, namespace, field_cls=field_cls or LocalizedFieldInfo, **options)
+        self = typing.cast("typing_extensions.Self", self)
 
         return self
 
@@ -99,6 +104,8 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
 
 class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
     """Localized API model."""
+
+    __slots__ = ()
 
     locale: typing.Optional[str] = fields.Extra(None)
 
@@ -129,9 +136,7 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
             else:
                 field_name = attr_name
 
-            attr = self.__dict__[attr_name]
-
-            value = apimodel._serialize_attr(attr, private=private, alias=alias, locale=locale)
+            value = apimodel._serialize_attr(getattr(self, attr_name), private=private, alias=alias, locale=locale)
 
             if locale is not None:
                 value = field.get_localized_value(value, self.__class__.i18n, locale)

@@ -13,7 +13,10 @@ profile = "black"
 line_length = 120
 
 [tool.slotscheck]
-require-superclass = false
+require-superclass = true
+require-subclass = true
+exclude-classes = ":.*Meta.*"
+exclude-modules = ".*generator.*"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

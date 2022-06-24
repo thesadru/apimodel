@@ -16,8 +16,6 @@ ErrorList = typing.Union[typing.Sequence["ErrorList"], "LocError"]
 class LocError(utility.Representation, Exception):
     """Error with a location."""
 
-    __slots__ = ("error", "loc")
-
     error: Exception
     loc: Loc
 
@@ -33,8 +31,6 @@ class LocError(utility.Representation, Exception):
 
 class ValidationError(utility.Representation, ValueError):
     """Pretty validation error inspired by pydantic."""
-
-    __slots__ = ("errors", "model")
 
     errors: typing.Sequence[LocError]
     model: typing.Type[apimodel.APIModel]
@@ -75,6 +71,8 @@ def flatten_errors(
 
 class ErrorCatcher:
     """Catch errors and append to a list."""
+
+    __slots__ = ("errors", "model")
 
     errors: typing.MutableSequence[LocError]
     model: typing.Type[apimodel.APIModel]

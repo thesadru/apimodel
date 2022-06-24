@@ -49,6 +49,7 @@ class APIModelMeta(type):
     Stores fields and validators generated for every model.
     """
 
+    __slots__: typing.Sequence[str]
     __fields__: typing.Mapping[str, fields.ModelFieldInfo]
     __extras__: typing.Mapping[str, fields.ExtraInfo]
     __root_validators__: typing.Sequence[validation.RootValidator]
@@ -60,6 +61,8 @@ class APIModelMeta(type):
         namespace: typing.Dict[str, object],
         *,
         field_cls: typing.Optional[typing.Type[fields.ModelFieldInfo]] = None,
+        slots: typing.Optional[bool] = None,
+        **options: object,
     ) -> typing_extensions.Self:
         """Create a new model class.
 
@@ -71,6 +74,7 @@ class APIModelMeta(type):
         self.__root_validators__ = []
 
         field_cls = field_cls or fields.ModelFieldInfo
+        slots = hasattr(bases[0], "__slots__") if slots is None else slots
 
         for name, annotation in typing.get_type_hints(self).items():
             obj = getattr(self, name, ...)
@@ -91,6 +95,11 @@ class APIModelMeta(type):
                 self.__extras__[name] = obj
 
         self.__root_validators__.sort(key=lambda v: v.order)
+
+        if slots and "__slots__" not in namespace:
+            previous_slots = set(slot for base in bases for slot in utility.get_slots(base))
+            all_slots = set((*self.__fields__.keys(), *self.__extras__.keys()))
+            self.__slots__ = tuple(all_slots - previous_slots)
 
         return self
 
@@ -143,7 +152,7 @@ class APIModelMeta(type):
         If an instance is not passed in, a dummy instance will be created.
         """
         if instance is None:
-            instance = APIModel._empty()
+            instance = APIModel._empty(freeform=True)
 
         self = typing.cast("typing.Type[APIModel]", self)
 
@@ -251,6 +260,9 @@ class APIModelMeta(type):
 class APIModel(utility.Representation, metaclass=APIModelMeta):
     """Base APIModel class."""
 
+    # populated by metaclass
+    __slots__ = ()
+
     def __new__(
         cls: typing.Type[APIModelT],
         obj: typing.Optional[object] = None,
@@ -310,7 +322,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
                 continue
 
             field_name = field.name if alias else attr_name
-            attr = self.__dict__[attr_name]
+            attr = getattr(self, attr_name)
             obj[field_name] = _serialize_attr(attr, private=private, alias=alias)
 
         return obj
@@ -321,13 +333,10 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
         for attr_name, extra in self.__class__.__extras__.items():
             field_name = extra.name if alias else attr_name
-            if attr_name in self.__dict__:
-                obj[field_name] = self.__dict__[attr_name]
+            if hasattr(self, attr_name):
+                obj[field_name] = getattr(self, attr_name)
 
         return obj
-
-    def __repr_args__(self) -> typing.Mapping[str, object]:
-        return self.__dict__
 
     @classmethod
     def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
@@ -343,6 +352,9 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         )
 
     @classmethod
-    def _empty(cls) -> APIModel:
+    def _empty(cls, freeform: bool = False) -> APIModel:
         """Return an empty base APIModel."""
+        if freeform:
+            cls = type(cls.__name__, (cls,), {})
+
         return super().__new__(cls)

@@ -71,9 +71,12 @@ class BaseValidator(utility.Representation):
 class Validator(BaseValidator):
     """Basic validator for a single value."""
 
-    _fields: typing.Sequence[str] = ()
+    __slots__ = ("_fields",)
+
+    _fields: typing.Sequence[str]
 
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.VALIDATOR) -> None:
+        self._fields = ()
         super().__init__(callback, order=order)
 
     def __call__(self, model: object, value: object) -> tutils.MaybeAwaitable[object]:
@@ -86,6 +89,8 @@ class Validator(BaseValidator):
 
 class RootValidator(BaseValidator):
     """Root validator for an entire model."""
+
+    __slots__ = ()
 
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.INITIAL_ROOT) -> None:
         super().__init__(callback, order=order)
