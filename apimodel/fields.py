@@ -8,7 +8,7 @@ from . import parser, tutils, utility, validation
 if typing.TYPE_CHECKING:
     import typing_extensions
 
-__all__ = ["Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo"]
+__all__ = ["Extra", "Field"]
 
 T = typing.TypeVar("T")
 

@@ -89,7 +89,6 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
         namespace: typing.Dict[str, object],
         *,
         field_cls: typing.Optional[typing.Type[LocalizedFieldInfo]] = None,
-        slots: typing.Optional[bool] = None,
         **options: object,
     ) -> typing_extensions.Self:
         self = super().__new__(cls, name, bases, namespace, field_cls=field_cls or LocalizedFieldInfo, **options)

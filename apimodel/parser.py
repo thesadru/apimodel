@@ -155,7 +155,6 @@ def literal_validator(values: typing.Collection[object]) -> AnnotationValidator:
     return validator
 
 
-# TODO: async item validators
 @debuggable_deco
 def collection_validator(
     collection_type: typing.Callable[[typing.Collection[typing.Any]], typing.Collection[object]],
@@ -174,8 +173,8 @@ def collection_validator(
         else:
             collection_type = tuple
 
-    @as_validator
-    def validator(model: apimodel.APIModel, value: object) -> typing.Collection[object]:
+    @utility.as_universal
+    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[typing.Collection[object]]:
         if not isinstance(value, typing.Iterable):
             raise TypeError(f"Expected iterable, got {type(value)}")
 
@@ -186,11 +185,14 @@ def collection_validator(
         with errors.catch_errors(model) as catcher:
             for index, item in enumerate(value):
                 with catcher.catch(loc=index):
-                    items.append(inner_validator(model, item))
+                    items.append((yield inner_validator(model, item)))
 
         return collection_type(items)
 
-    return validator
+    if inner_validator.isasync:
+        return as_validator(validator.asynchronous)
+    else:
+        return as_validator(validator.synchronous)
 
 
 @debuggable_deco
@@ -205,8 +207,8 @@ def mapping_validator(
     if inspect.isabstract(mapping_type):
         mapping_type = dict
 
-    @as_validator
-    def validator(model: apimodel.APIModel, value: object) -> typing.Collection[object]:
+    @utility.as_universal
+    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[typing.Collection[object]]:
         if not isinstance(value, typing.Mapping):
             raise TypeError(f"Expected mapping, got {type(value)}")
 
@@ -217,11 +219,14 @@ def mapping_validator(
         with errors.catch_errors(model) as catcher:
             for key in value:
                 with catcher.catch(loc=str(key)):
-                    mapping[key_validator(model, key)] = value_validator(model, value[key])
+                    mapping[(yield key_validator(model, key))] = yield value_validator(model, value[key])
 
         return mapping_type(mapping)
 
-    return validator
+    if key_validator.isasync or value_validator.isasync:
+        return as_validator(validator.asynchronous)
+    else:
+        return as_validator(validator.synchronous)
 
 
 @debuggable_deco

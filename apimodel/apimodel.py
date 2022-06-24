@@ -73,7 +73,11 @@ class APIModelMeta(type):
         self.__extras__ = {}
         self.__root_validators__ = []
 
-        field_cls = field_cls or fields.ModelFieldInfo
+        if field_cls is None:
+            possible: typing.Collection[typing.Type[fields.ModelFieldInfo]]
+            possible = set(type(field) for base in bases for field in getattr(base, "__fields__", {}).values())
+            field_cls = next(iter(possible)) if len(possible) == 1 else fields.ModelFieldInfo
+
         slots = hasattr(bases[0], "__slots__") if slots is None else slots
 
         for name, annotation in typing.get_type_hints(self).items():
@@ -105,7 +109,7 @@ class APIModelMeta(type):
 
     def __repr__(self) -> str:
         args = ", ".join(f"{k}={v!r}" for k, v in self.__fields__.items())
-        return f"{self.__class__.__name__}({args})"
+        return f"{self.__class__.__name__}({self.__name__!r}, {args})"
 
     def __devtools_pretty(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""

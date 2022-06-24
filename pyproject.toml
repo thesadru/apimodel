@@ -46,6 +46,7 @@ exclude_lines = [
     "^\\s*raise$",
     "^\\s*pass$",
     "^\\s*except ImportError:$",
+    "^\\s*raise .*$",
     "^if __name__ == ['\"]__main__['\"]:$",
     "^\\s*\\.\\.\\.$",
     "^\\s*(el)?if typing.TYPE_CHECKING:$",

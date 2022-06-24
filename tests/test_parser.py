@@ -174,3 +174,10 @@ def test_validate_arguments() -> None:
         return a + b  # type: ignore
 
     assert callback("4.2", "3.1") == 7
+
+
+def test_tp_retention() -> None:
+    tp = typing.Mapping[str, int]
+    field = apimodel.fields.ModelFieldInfo.from_annotation("attr", tp)
+
+    assert field.tp is tp
