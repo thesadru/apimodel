@@ -81,7 +81,7 @@ def test_create_schemas(json_data: typing.Any) -> None:
 
 
 def test_generate_models(json_data: typing.Any) -> None:
-    code = apimodel.generator.generate_models(json_data)
+    code = apimodel.generator.generate_models(json_data, python=(3, 10))
     expected = """
 import typing
 
@@ -93,18 +93,18 @@ class Nested(apimodel.APIModel):
 
 
 class NestedArray(apimodel.APIModel):
-    maybe_float: typing.Optional[float] = apimodel.Field(None, name="maybeFloat")
-    any: typing.Optional[typing.Union[str, int]] = None
+    maybe_float: float | None = apimodel.Field(None, name="maybeFloat")
+    any: str | int | None = None
 
 
 class Root(apimodel.APIModel):
     string: str
     integer: int
     boolean: bool
-    null: typing.Optional[object] = None
+    null: object | None = None
     timestamp: datetime.datetime
-    array: typing.Sequence[int]
+    array: list[int]
     nested: Nested
-    nested_array: typing.Sequence[NestedArray] = apimodel.Field(name="nestedArray")
+    nested_array: list[NestedArray] = apimodel.Field(name="nestedArray")
 """.lstrip()
     assert code == expected

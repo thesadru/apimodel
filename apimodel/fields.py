@@ -99,6 +99,13 @@ class ModelFieldInfo(FieldInfo):
 
             default = default.default
 
+        # not done by default on newer version of python
+        if default is None:
+            try:
+                annotation = typing.Optional[annotation]  # type: ignore
+            except Exception:
+                pass
+
         validator = parser.get_validator(annotation)
         validators.append(validator)
 

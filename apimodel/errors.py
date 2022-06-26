@@ -6,7 +6,7 @@ import typing
 
 from . import apimodel, tutils, utility
 
-__all__ = ["LocError", "ValidationError"]
+__all__ = ["LocError", "ValidationError", "catch_errors"]
 
 
 Loc = typing.Tuple[typing.Union[int, str], ...]
@@ -18,7 +18,10 @@ class LocError(utility.Representation, Exception):
     """Error with a location."""
 
     error: Exception
+    """Original error."""
+
     loc: Loc
+    """Location where the error ocurred."""
 
     def __init__(self, error: Exception, loc: RawLoc = "__root__") -> None:
         """Initialize a LocError.
@@ -38,7 +41,10 @@ class ValidationError(utility.Representation, ValueError):
     """Pretty validation error inspired by pydantic."""
 
     errors: typing.Sequence[LocError]
+    """Collected errors."""
+
     model: typing.Type[apimodel.APIModel]
+    """The model in which the error ocurred. Used for debugging."""
 
     def __init__(self, *errors: ErrorList, model: typing.Type[apimodel.APIModel]) -> None:
         """Initialize a ValidationError with a list of LocErrors."""
@@ -119,7 +125,15 @@ class ErrorCatcher:
 
 @contextlib.contextmanager
 def catch_errors(model: tutils.MaybeType[apimodel.APIModel]) -> typing.Iterator[ErrorCatcher]:
-    """Catch errors and raise a ValidationError if at least one is present."""
+    """Catch errors and raise a ValidationError if at least one is present.
+
+    Examples
+    --------
+    >>> with apimodel.errors.catch_errors(model) as catcher:
+    >>>     for name, function in function:
+    >>>         with catcher.catch(loc=function.__name__):
+    >>>             function()
+    """
     if not isinstance(model, type):
         model = type(model)
 

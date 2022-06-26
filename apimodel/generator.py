@@ -1,6 +1,7 @@
 """Model generator from JSON data."""
 from __future__ import annotations
 
+import sys
 import typing
 
 from . import parser, tutils, utility
@@ -19,6 +20,8 @@ MaybeUnion = tutils.MaybeSequence[str]
 Field = typing.TypedDict("Field", {"name": str, "type": MaybeUnion, "default": object, "array": bool}, total=False)
 Schema = typing.Mapping[str, Field]
 
+VersionInfo = typing.Union[typing.Tuple[int, ...], "sys._version_info"]
+
 T = typing.TypeVar("T")
 
 
@@ -35,37 +38,51 @@ def to_snake_case(string: str) -> str:
     )
 
 
-def format_field_type(field: typing.Union[str, Field]) -> str:
+def format_field_type(
+    field: typing.Union[str, Field],
+    *,
+    python: typing.Optional[VersionInfo] = None,
+) -> str:
     """Format a field type."""
     if isinstance(field, str):
         return field
 
     assert "type" in field, "Incomplete Field"
+    python = python or sys.version_info
 
-    # TODO: 3.10 support
-    genalias = "{}"
-    if not isinstance(field["type"], str):
-        clean_type, messy_type = [x for x in field["type"] if "None" not in x], field["type"]
-        if len(clean_type) == 0:
-            clean_type = ("object",)
-        elif len(clean_type) == len(messy_type):
-            genalias = "typing.Union[{}]"
-        elif len(clean_type) == 1:
-            genalias = "typing.Optional[{}]"
-        else:
-            genalias = "typing.Optional[typing.Union[{}]]"
+    types: typing.Sequence[str]
+    optional: bool = False
 
+    if not isinstance(field["type"], str):  # union
+        types, old_types = [x for x in field["type"] if "None" not in x], field["type"]
+        if len(types) != len(old_types):
+            optional = True
     elif field["type"] == "None":
-        genalias = "typing.Optional[{}]"
-        clean_type = ("object",)
-
+        types = ("object",)
+        optional = True
     else:
-        clean_type = (field["type"],)
+        types = (field["type"],)
+
+    if python >= (3, 10):
+        annotation = " | ".join(types)
+        if optional:
+            annotation += " | None"
+    else:
+        if len(types) == 1:
+            annotation = types[0]
+        else:
+            annotation = f"typing.Union[{', '.join(types)}]"
+
+        if optional:
+            annotation = f"typing.Optional[{annotation}]"
 
     if field.get("array", False):
-        genalias = "typing.Sequence[{}]".format(genalias)
+        if python >= (3, 9):
+            annotation = f"list[{annotation}]"
+        else:
+            annotation = f"typing.Sequence[{annotation}]"
 
-    return genalias.format(", ".join(clean_type))
+    return annotation
 
 
 def format_field_default(field: Field) -> str:
@@ -207,7 +224,11 @@ def create_schemas(data: JSONType) -> typing.Mapping[str, Schema]:
     return schemas
 
 
-def generate_models(data: JSONType) -> str:
+def generate_models(
+    data: JSONType,
+    *,
+    python: typing.Optional[VersionInfo] = None,
+) -> str:
     """Generate model code from data."""
     schemas = create_schemas(data)
 
@@ -219,7 +240,7 @@ def generate_models(data: JSONType) -> str:
             code += "    pass\n"
 
         for name, field in schema.items():
-            value = format_field_type(field)
+            value = format_field_type(field, python=python)
             default = format_field_default(field)
 
             code += f"    {name}: {value}"

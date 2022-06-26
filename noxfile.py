@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
-import shutil
 import typing
 
 import nox
@@ -46,9 +45,16 @@ def docs(session: nox.Session) -> None:
     output = "docs/_build/html"
 
     if "--autobuild" in session.posargs:
-        session.run("sphinx-autobuild", "docs", output)
-
-        shutil.rmtree("docs/_build")
+        # sphinx-autobuild absolutely cannot do relative paths
+        session.run(
+            "sphinx-autobuild",
+            "docs",
+            output,
+            "--watch",
+            os.path.abspath(PACKAGE),
+            "--ignore",
+            os.path.abspath("docs/reference"),
+        )
     else:
         session.run("sphinx-build", "-M", "dirhtml", "docs", output)
 

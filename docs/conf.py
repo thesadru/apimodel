@@ -86,6 +86,9 @@ def skip_member(
         if what == "attribute" and sname == "__slots__":
             return True
 
+    if what == "module" and sname == "__main__":
+        return True
+
     return skip
 
 

@@ -14,7 +14,7 @@ Advanced models for non-standard modern JSON APIs. Supports extensive conversion
 Works with both synchronous and asynchronous models seamlessly.
 Fully tested and type-hinted.
 
-# Key Features
+## Key Features
 
 - Seamless data parsing through annotations.
 - Supports extensive conversion and validation.
@@ -24,7 +24,7 @@ Fully tested and type-hinted.
 - Fully tested and type-hinted.
 - No requirements.
 
-# Example
+## Example
 
 You can see more examples in the docs.
 
