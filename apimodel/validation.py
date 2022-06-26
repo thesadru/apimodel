@@ -20,12 +20,22 @@ class Order(enum.IntEnum):
         return count * 10
 
     INITIAL_ROOT = enum.auto()
-    # ALIAS
+    """Root Validator acting upon the completely raw data."""
+
     ROOT = enum.auto()
+    """Root Validator acting upon the data with converted names."""
+
     VALIDATOR = enum.auto()
+    """Validator acting upon a field before annotation conversion."""
+
     ANNOTATION = enum.auto()
+    """Annotation Validator. Not meant to be defined by the user."""
+
     POST_VALIDATOR = enum.auto()
+    """Validator acting upon a field after annotation conversion."""
+
     FINAL_ROOT = enum.auto()
+    """Root Validator acting upon the data after individual field conversion."""
 
 
 class BaseValidator(utility.Representation):
@@ -39,6 +49,10 @@ class BaseValidator(utility.Representation):
     bound: bool
 
     def __init__(self, callback: tutils.AnyCallable, *, order: int) -> None:
+        """Initialize a validator.
+
+        Validators are unbound by default.
+        """
         self.callback = callback
         self.order = order
 

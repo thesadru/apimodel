@@ -5,7 +5,7 @@ import typing
 
 from . import tutils
 
-__all__ = ["Representation", "devtools_pretty"]
+__all__ = ["Representation"]
 
 T = typing.TypeVar("T")
 P = tutils.ParamSpec("P")

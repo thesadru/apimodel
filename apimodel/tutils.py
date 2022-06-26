@@ -1,4 +1,4 @@
-"""Backwards-compatible types and typing utilities.."""
+"""Backwards-compatible types and typing utilities."""
 from __future__ import annotations
 
 import sys
@@ -6,6 +6,8 @@ import typing
 
 if typing.TYPE_CHECKING:
     import typing_extensions
+
+__all__ = ["lenient_issubclass"]
 
 # Combinations of identical types
 if sys.version_info >= (3, 10):

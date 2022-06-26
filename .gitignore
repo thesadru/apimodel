@@ -24,6 +24,11 @@ wheels/
 *.egg
 MANIFEST
 
+# Sphinx
+docs/build/
+docs/_build/
+docs/reference/
+
 # Temporary test files
 test.py
 

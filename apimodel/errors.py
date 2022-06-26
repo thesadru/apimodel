@@ -6,10 +6,11 @@ import typing
 
 from . import apimodel, tutils, utility
 
-__all__ = ["ValidationError"]
+__all__ = ["LocError", "ValidationError"]
 
 
 Loc = typing.Tuple[typing.Union[int, str], ...]
+RawLoc = typing.Union[int, str, Loc]
 ErrorList = typing.Union[typing.Sequence["ErrorList"], "LocError"]
 
 
@@ -19,7 +20,11 @@ class LocError(utility.Representation, Exception):
     error: Exception
     loc: Loc
 
-    def __init__(self, error: Exception, loc: typing.Union[str, int, Loc] = "__root__") -> None:
+    def __init__(self, error: Exception, loc: RawLoc = "__root__") -> None:
+        """Initialize a LocError.
+
+        The instance will act as an intersection between LocError and the passed error.
+        """
         self.error = error
         self.loc = loc if isinstance(loc, tuple) else (loc,)
 
@@ -36,6 +41,7 @@ class ValidationError(utility.Representation, ValueError):
     model: typing.Type[apimodel.APIModel]
 
     def __init__(self, *errors: ErrorList, model: typing.Type[apimodel.APIModel]) -> None:
+        """Initialize a ValidationError with a list of LocErrors."""
         self.errors = utility.flatten_sequences(*errors)
         self.model = model
 
@@ -45,14 +51,19 @@ class ValidationError(utility.Representation, ValueError):
         errors = list(flatten_errors(self.errors))
         return (
             f'{len(errors)} validation error{"" if len(errors) == 1 else "s"} for {self.model.__name__}\n'
-            + "\n".join(f'{" -> ".join(str(e) for e in loc)}\n  {msg}' for loc, msg in errors)
+            + "\n".join(f'{" -> ".join(map(str, loc))}\n  {error.__class__.__name__}: {error}' for loc, error in errors)
         )
+
+    @property
+    def locations(self) -> typing.Sequence[typing.Tuple[Loc, Exception]]:
+        """Get flattened locations and errors."""
+        return list(flatten_errors(self.errors))
 
 
 def flatten_errors(
     errors: typing.Sequence[ErrorList],
     loc: typing.Optional[Loc] = None,
-) -> typing.Iterator[typing.Tuple[Loc, str]]:
+) -> typing.Iterator[typing.Tuple[Loc, Exception]]:
     """Flatten recursive errors."""
     for error in errors:
         if isinstance(error, LocError):
@@ -63,7 +74,7 @@ def flatten_errors(
             if isinstance(error.error, ValidationError):
                 yield from flatten_errors(error.error.errors, loc=error_loc)
             else:
-                yield (error_loc, repr(error.error))
+                yield (error_loc, error.error)
 
         else:
             yield from flatten_errors(error, loc=loc)
@@ -78,18 +89,19 @@ class ErrorCatcher:
     model: typing.Type[apimodel.APIModel]
 
     def __init__(self, model: tutils.MaybeType[apimodel.APIModel]) -> None:
+        """Initialize an ErrorCatcher."""
         if not isinstance(model, type):
             model = type(model)
 
         self.errors = []
         self.model = model
 
-    def add_error(self, error: Exception, loc: typing.Union[str, int, Loc]) -> None:
+    def add_error(self, error: Exception, loc: RawLoc) -> None:
         """Add an error to the list."""
         self.errors.append(LocError(error, loc))
 
     @contextlib.contextmanager
-    def catch(self, loc: typing.Union[str, int, Loc] = "__root__") -> typing.Iterator[None]:
+    def catch(self, loc: RawLoc = "__root__") -> typing.Iterator[None]:
         """Catch errors and append to a list."""
         try:
             yield

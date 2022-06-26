@@ -8,7 +8,7 @@ from . import errors, fields, tutils, utility, validation
 if typing.TYPE_CHECKING:
     import typing_extensions
 
-__all__ = ["APIModel"]
+__all__ = ["APIModel", "APIModelMeta"]
 
 ValidatorT = typing.TypeVar("ValidatorT", bound=validation.BaseValidator)
 APIModelT = typing.TypeVar("APIModelT", bound="APIModel")
@@ -50,9 +50,15 @@ class APIModelMeta(type):
     """
 
     __slots__: typing.Sequence[str]
+
     __fields__: typing.Mapping[str, fields.ModelFieldInfo]
+    """Fields with their validators."""
+
     __extras__: typing.Mapping[str, fields.ExtraInfo]
+    """Extra values."""
+
     __root_validators__: typing.Sequence[validation.RootValidator]
+    """Root validators."""
 
     def __new__(
         cls,
@@ -190,7 +196,7 @@ class APIModelMeta(type):
                     elif extra.default is not ...:
                         setattr(instance, attr_name, extra.default)
                     else:
-                        catcher.add_error(TypeError(f"Missing required extra field: {attr_name!r}"), loc=attr_name)
+                        catcher.add_error(TypeError(f"Missing required extra field: {extra.name!r}"), loc=attr_name)
 
         obj = new_obj
 
@@ -206,7 +212,7 @@ class APIModelMeta(type):
         with errors.catch_errors(self) as catcher:
             for attr_name, field in self.__fields__.items():
                 if attr_name not in obj:
-                    catcher.add_error(TypeError(f"Missing required field: {attr_name!r}"), loc=attr_name)
+                    catcher.add_error(TypeError(f"Missing required field: {field.name!r}"), loc=attr_name)
 
         obj = dict(obj)
 
@@ -317,7 +323,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         """Update a model instance asynchronously."""
         return await self.__class__.validate(obj, instance=self, extras=True)
 
-    def as_dict(self, *, private: bool = False, alias: bool = True, **options: object) -> tutils.JSONMapping:
+    def as_dict(self, *, private: bool = False, alias: bool = False, **options: object) -> tutils.JSONMapping:
         """Create a mapping from the model instance."""
         obj: tutils.JSONMapping = {}
 
@@ -342,13 +348,16 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
 
         return obj
 
+    def __repr_args__(self) -> typing.Mapping[str, object]:
+        return {attr: getattr(self, attr) for attr in self.__class__.__fields__}
+
     @classmethod
     def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
         """Get pydantic validators for compatibility."""
         yield cls.sync_create
 
     @classmethod
-    def __modify_schema__(cls, field_schema: typing.Dict[str, object], *, experimental: bool = False) -> None:
+    def __modify_schema__(cls, field_schema: typing.Dict[str, object]) -> None:
         """Create a schema for pydantic."""
         field_schema.update(
             type="object",

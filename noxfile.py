@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import pathlib
+import shutil
 import typing
 
 import nox
@@ -11,7 +12,7 @@ import nox
 nox.options.sessions = ["reformat", "lint", "type-check", "verify-types", "test"]
 nox.options.reuse_existing_virtualenvs = True
 PACKAGE = "apimodel"
-GENERAL_TARGETS = ["./noxfile.py", "./apimodel", "./tests"]
+GENERAL_TARGETS = ["./apimodel", "./tests", "./noxfile.py", "docs/conf.py"]
 PYRIGHT_ENV = {"PYRIGHT_PYTHON_FORCE_VERSION": "latest"}
 
 LOGGER = logging.getLogger("nox")
@@ -42,11 +43,14 @@ def docs(session: nox.Session) -> None:
     """Generate docs for this project using Pdoc."""
     install_requirements(session, "docs")
 
-    output_directory = pathlib.Path("./docs/pdoc/")
-    session.log("Building docs into %s", output_directory)
+    output = "docs/_build/html"
 
-    session.run("pdoc3", "--html", PACKAGE, "-o", str(output_directory), "--force")
-    session.log("Docs generated: %s", output_directory / "index.html")
+    if "--autobuild" in session.posargs:
+        session.run("sphinx-autobuild", "docs", output)
+
+        shutil.rmtree("docs/_build")
+    else:
+        session.run("sphinx-build", "-M", "dirhtml", "docs", output)
 
 
 @nox.session()
@@ -127,4 +131,4 @@ def verify_types(session: nox.Session) -> None:
 @nox.session(python=False)
 def prettier(session: nox.Session) -> None:
     """Run prettier on markdown files."""
-    session.run("prettier", "-w", "*.md", "docs/*.md", "*.yml")
+    session.run("prettier", "-w", "*.md", "docs/*.md", "docs/**/*.md", "*.yml")

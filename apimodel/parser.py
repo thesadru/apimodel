@@ -23,6 +23,10 @@ class AnnotationValidator(validation.Validator):
     tp: object
 
     def __init__(self, callback: tutils.AnyCallable) -> None:
+        """Initialize an AnnotationValidator.
+
+        The callback must have an annotated return type.
+        """
         super().__init__(callback, order=validation.Order.ANNOTATION)
 
         try:
@@ -150,7 +154,11 @@ def literal_validator(values: typing.Collection[object]) -> AnnotationValidator:
         if value in values:
             return value
 
-        raise TypeError(f"Invalid value, must be one of: {values}")
+        if len(values) == 1:
+            (expected,) = values
+            raise TypeError(f"Expected {expected}, got {value!r}")
+        else:
+            raise TypeError(f"Expected one of {values}, got {value!r}")
 
     return validator
 
@@ -244,8 +252,8 @@ def union_validator(validators: typing.Sequence[validation.Validator]) -> Annota
     @utility.as_universal
     def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
         catcher = errors.ErrorCatcher(model)
-        for validator in validators:
-            with catcher.catch():
+        for index, validator in enumerate(validators):
+            with catcher.catch(loc=f"Union[{index}]"):
                 return (yield validator(model, value))
 
         catcher.raise_errors()

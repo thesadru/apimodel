@@ -8,21 +8,40 @@ from . import parser, tutils, utility, validation
 if typing.TYPE_CHECKING:
     import typing_extensions
 
-__all__ = ["Extra", "Field"]
+__all__ = ["Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo"]
 
 T = typing.TypeVar("T")
 
 
+# TODO: default_factory
 class FieldInfo(utility.Representation):
     """Basic information about a field."""
 
     __slots__ = ("default", "name", "private", "validators", "extra")
 
     default: object
+    """The default value of the field."""
+
     name: typing.Optional[str]
+    """Key name in the JSON object. Similar to pydantic's alias.
+
+    The attribute name by default
+    """
+
     private: typing.Optional[bool]
+    """Whether the field is private. Affects model.as_dict()
+
+    Set to True by default if the attribute name starts with an underscore.
+    """
+
     validators: typing.List[validation.Validator]
+    """Validators for the value."""
+
     extra: typing.Mapping[str, typing.Any]
+    """Extra metadata about the field.
+
+    May be used by subclasses to store additional information.
+    """
 
     def __init__(
         self,
@@ -33,6 +52,10 @@ class FieldInfo(utility.Representation):
         validators: tutils.MaybeSequence[tutils.AnyCallable] = (),
         **extra: typing.Any,
     ) -> None:
+        """Initialize a FieldInfo.
+
+        Extra arguments may be repurposed for subclass attributes.
+        """
         self.default = default
         self.name = name
         self.private = private
@@ -101,6 +124,7 @@ class ExtraInfo(utility.Representation):
     name: str
 
     def __init__(self, default: object = ..., name: str = "") -> None:
+        """Initialize an ExtraInfo."""
         self.default = default
         self.name = name
 

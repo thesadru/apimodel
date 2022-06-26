@@ -9,7 +9,7 @@ from . import apimodel, fields, tutils
 if typing.TYPE_CHECKING:
     import typing_extensions
 
-__all__ = ["LocalizedAPIModel"]
+__all__ = ["LocalizedAPIModel", "LocalizedAPIModelMeta", "LocalizedFieldInfo"]
 
 
 class LocalizedFieldInfo(fields.ModelFieldInfo):
@@ -91,6 +91,10 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
         field_cls: typing.Optional[typing.Type[LocalizedFieldInfo]] = None,
         **options: object,
     ) -> typing_extensions.Self:
+        """Create a new model class.
+
+        Collects all fields and validators.
+        """
         self = super().__new__(cls, name, bases, namespace, field_cls=field_cls or LocalizedFieldInfo, **options)
         self = typing.cast("typing_extensions.Self", self)
 
@@ -112,7 +116,7 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
         self,
         *,
         private: bool = False,
-        alias: typing.Optional[bool] = None,
+        alias: bool = False,
         locale: typing.Optional[str] = None,
         **options: object,
     ) -> tutils.JSONMapping:
@@ -121,15 +125,12 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
 
         locale = locale or self.locale
 
-        if locale is None and alias is None:
-            alias = True
-
         for attr_name, field in self.__class__.__fields__.items():
             if field.private and not private:
                 continue
 
-            if alias is not None:
-                field_name = field.name if alias else attr_name
+            if alias:
+                field_name = field.name
             elif locale is not None:
                 field_name = field.get_localized_name(self.__class__.i18n, locale)
             else:
