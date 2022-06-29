@@ -8,7 +8,7 @@ from . import errors, fields, tutils, utility, validation
 if typing.TYPE_CHECKING:
     import typing_extensions
 
-__all__ = ["APIModel", "APIModelMeta"]
+__all__ = ["APIModel", "APIModelMeta", "create_model"]
 
 ValidatorT = typing.TypeVar("ValidatorT", bound=validation.BaseValidator)
 APIModelT = typing.TypeVar("APIModelT", bound="APIModel")
@@ -371,3 +371,44 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             cls = type(cls.__name__, (cls,), {})
 
         return super().__new__(cls)
+
+
+def create_model(
+    __name__: str,
+    __bases__: tutils.MaybeSequence[typing.Type[APIModel]] = APIModel,
+    /,
+    __fields__: typing.Optional[typing.Mapping[str, fields.ModelFieldInfo]] = None,
+    __extras__: typing.Optional[typing.Mapping[str, fields.ExtraInfo]] = None,
+    __root_validators__: typing.Optional[typing.Sequence[validation.RootValidator]] = None,
+    **attrs: typing.Union[object, fields.FieldInfo, fields.ExtraInfo, typing.Tuple[object, object]],
+) -> typing.Type[APIModel]:
+    """Dynamically create a model.
+
+    Fields must be in the formats `name=type` | `name=FieldInfo()` | `name=(type, default)`
+    """
+    namespace: typing.Dict[str, typing.Any] = {}
+    annotations = namespace["__annotations__"] = {}
+    for name, attr in attrs.items():
+        if isinstance(attr, (fields.FieldInfo, fields.ExtraInfo)):
+            namespace[name] = attr
+            annotations[attr] = attr.tp if isinstance(attr, fields.ModelFieldInfo) else object
+        elif isinstance(attr, tuple):
+            attr = typing.cast("typing.Tuple[object, object]", attr)
+            if len(attr) != 2:
+                raise TypeError("Tuple must be (type, default)")
+
+            annotations[name] = attr[0]
+            namespace[name] = attr[1]
+        else:
+            annotations[name] = attr
+
+    model: typing.Type[APIModel] = type(__name__, tuple(utility.flatten_sequences(__bases__)), namespace)  # type: ignore
+
+    if __fields__:
+        model.__fields__ = {**model.__fields__, **__fields__}
+    if __extras__:
+        model.__extras__ = {**model.__extras__, **__extras__}
+    if __root_validators__:
+        model.__root_validators__ = [*model.__root_validators__, *__root_validators__]
+
+    return model

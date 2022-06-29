@@ -216,7 +216,7 @@ def mapping_validator(
         mapping_type = dict
 
     @utility.as_universal
-    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[typing.Collection[object]]:
+    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
         if not isinstance(value, typing.Mapping):
             raise TypeError(f"Expected mapping, got {type(value)}")
 
@@ -289,6 +289,74 @@ def model_validator(model: typing.Type[apimodel.APIModel]) -> AnnotationValidato
         return sync_validator
 
 
+@debuggable_deco
+def tuple_validator(tup: typing.Type[typing.Tuple[object, ...]]) -> AnnotationValidator:
+    """Validate a namedtuple."""
+    if hasattr(tup, "_fields"):
+        name = tup.__name__
+        types = getattr(tup, "_field_types", {}) or getattr(tup, "__annotations__", {})
+        fields = getattr(tup, "_fields", tuple(types.keys()))
+        defaults = getattr(tup, "_field_defaults", {})
+    else:
+        name = "Tuple"
+        types = {f"field_{i}": x for i, x in enumerate(typing.get_args(tup))}
+        fields = tuple(types.keys())
+        defaults = {}
+
+    definitions = {name: (types.get(name, object), defaults.get(name, ...)) for name in fields}
+    model = apimodel.create_model(name, **definitions)
+
+    @utility.as_universal
+    def validator(root: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[typing.Tuple[object, ...]]:
+        items: typing.Mapping[str, object]
+
+        if isinstance(value, typing.Mapping):
+            items = value
+        elif isinstance(value, typing.Iterable):
+            items = dict(zip(fields, typing.cast("typing.Iterable[object]", value)))
+        else:
+            raise TypeError(f"Expected iterable, got {type(value)}")
+
+        items = yield from model._validate_universal(model, items)
+
+        if hasattr(tup, "_fields"):
+            return tup(**items)
+        else:
+            tp = typing.get_origin(tup) or tup
+            return tp(tuple(items.values()))
+
+    if model.isasync:
+        return as_validator(validator.asynchronous)
+    else:
+        return as_validator(validator.synchronous)
+
+
+@debuggable_deco
+def typeddict_validator(typeddict: typing.Type[typing.TypedDict]) -> AnnotationValidator:
+    """Validate a typeddict."""
+    required: typing.Collection[str] = getattr(typeddict, "__required_keys__", ())
+    definitions = {
+        name: (tp if required and name in required else (tp, None)) for name, tp in typeddict.__annotations__.items()
+    }
+    model = apimodel.create_model(typeddict.__name__, **definitions)
+
+    @utility.as_universal
+    def validator(root: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
+        if not isinstance(value, typing.Mapping):
+            raise TypeError(f"Expected mapping, got {type(value)}")
+
+        value = typing.cast("typing.Mapping[str, object]", value)
+
+        x = yield from model._validate_universal(model, value)
+
+        return x
+
+    if model.isasync:
+        return as_validator(validator.asynchronous)
+    else:
+        return as_validator(validator.synchronous)
+
+
 RAW_VALIDATORS: typing.Mapping[object, AnnotationValidator] = {
     int: cast_validator(int),
     float: cast_validator(float),
@@ -325,7 +393,7 @@ def normalize_annotation(tp: object) -> object:
 
     if typing.get_origin(tp) in tutils.UnionTypes:
         if len(args := typing.get_args(tp)) == 1:
-            tp = args[0]
+            tp = normalize_annotation(args[0])
 
     return tp
 
@@ -345,7 +413,6 @@ def _add_tp(callback: tutils.CallableT) -> tutils.CallableT:
 @_add_tp
 def get_validator(tp: object) -> AnnotationValidator:
     """Get a validator for the given type."""
-    # TODO: NamedTuple and TypedDict
     # TODO: pydantic and dataclasses
 
     origin = typing.get_origin(tp) or tp
@@ -361,12 +428,15 @@ def get_validator(tp: object) -> AnnotationValidator:
 
     if tutils.lenient_issubclass(origin, apimodel.APIModel):
         return model_validator(origin)
+    if tutils.lenient_issubclass(origin, tuple) and (not args or args[-1] != ...):
+        return tuple_validator(typing.cast("type[tuple[object, ...]]", tp))
+    if tutils.lenient_issubclass(origin, dict) and hasattr(origin, "__annotations__"):
+        return typeddict_validator(typing.cast("type[typing.TypedDict]", tp))
 
     if tutils.lenient_issubclass(origin, typing.Mapping):
         key_validator = get_validator(args[0]) if args else noop_validator
         value_validator = get_validator(args[1]) if args else noop_validator
         return mapping_validator(origin, key_validator, value_validator)
-
     if tutils.lenient_issubclass(origin, typing.Collection):
         validator = get_validator(args[0]) if args else noop_validator
         return collection_validator(origin, validator)
@@ -377,7 +447,7 @@ def get_validator(tp: object) -> AnnotationValidator:
     if isinstance(tp, type):
         return arbitrary_validator(tp)
 
-    raise TypeError(f"Unknown annotation: {tp}. Use Annotated[{tp}, object] to disable the default validator.")
+    raise TypeError(f"Unknown annotation: {tp!r}. Use Annotated[{tp!r}, object] to disable the default validator.")
 
 
 def cast(tp: object, value: object) -> object:

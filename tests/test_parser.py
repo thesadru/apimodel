@@ -1,3 +1,4 @@
+import collections
 import datetime
 import sys
 import typing
@@ -139,6 +140,43 @@ def test_mapping_validator(
 
 
 @pytest.mark.parametrize(
+    ("tup", "value", "expected"),
+    [
+        (typing.Tuple[str, int], (42, "43"), ("42", 43)),
+        (
+            collections.namedtuple("NT", ["x", "y", "z"], defaults=(None,)),  # pyright: ignore[reportUntypedNamedTuple]
+            ("foo", "bar"),
+            ("foo", "bar", None),
+        ),
+        (typing.NamedTuple("NT", x=str, y=int), (42, "43"), ("42", 43)),
+    ],
+)
+def test_namedtuple(
+    model: apimodel.APIModel,
+    tup: typing.Type[typing.Tuple[object, ...]],
+    value: object,
+    expected: object,
+) -> None:
+    assert apimodel.parser.tuple_validator(tup)(model, value) == expected
+
+
+@pytest.mark.parametrize(
+    ("typeddict", "value", "expected"),
+    [
+        (typing.TypedDict("NT", x=str, y=int), {"x": 42, "y": "43"}, {"x": "42", "y": 43}),
+        (typing.TypedDict("NT", x=str, y=int, total=False), {"x": 42}, {"x": "42", "y": None}),  # type: ignore # undefined total
+    ],
+)
+def test_typeddict(
+    model: apimodel.APIModel,
+    typeddict: typing.Type[typing.TypedDict],
+    value: object,
+    expected: object,
+) -> None:
+    assert apimodel.parser.typeddict_validator(typeddict)(model, value) == expected
+
+
+@pytest.mark.parametrize(
     ("validators", "value", "expected"),
     [
         ([apimodel.parser.noop_validator, apimodel.parser.noop_validator], "foo", "foo"),
@@ -160,8 +198,8 @@ def test_union_validator(
         (object, "foo", "foo"),
         (int, "42", 42),
         (typing.Union[int, float], "4.2", 4.2),
-        (apimodel.tutils.Annotated["typing.TypedDict", typing.Dict[str, int]], {"a": "42"}, {"a": 42}),
-        (typing.TypeVar("T", bound=str), 42, "42"),
+        (apimodel.tutils.Annotated["apimodel.tutils.JSONMapping", typing.Dict[str, int]], {"a": "42"}, {"a": 42}),
+        (typing.TypeVar("T", bound=typing.Tuple[int, str]), ("42", 43), (42, "43")),
     ],
 )
 def test_cast(tp: type, value: object, expected: object) -> None:
