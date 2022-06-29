@@ -140,10 +140,10 @@ class ExtraInfo(utility.Representation):
 def Field(
     default: T,
     *,
-    name: typing.Optional[str] = None,
-    private: typing.Optional[bool] = None,
-    validator: tutils.MaybeSequence[tutils.AnyCallable] = (),
-    validators: tutils.MaybeSequence[tutils.AnyCallable] = (),
+    name: typing.Optional[str] = ...,
+    private: typing.Optional[bool] = ...,
+    validator: tutils.MaybeSequence[tutils.AnyCallable] = ...,
+    validators: tutils.MaybeSequence[tutils.AnyCallable] = ...,
     **extra: typing.Any,
 ) -> T | typing.Any:
     ...
@@ -152,10 +152,10 @@ def Field(
 @typing.overload
 def Field(
     *,
-    name: typing.Optional[str] = None,
-    private: typing.Optional[bool] = None,
-    validator: tutils.MaybeSequence[tutils.AnyCallable] = (),
-    validators: tutils.MaybeSequence[tutils.AnyCallable] = (),
+    name: typing.Optional[str] = ...,
+    private: typing.Optional[bool] = ...,
+    validator: tutils.MaybeSequence[tutils.AnyCallable] = ...,
+    validators: tutils.MaybeSequence[tutils.AnyCallable] = ...,
     **extra: typing.Any,
 ) -> typing.Any:
     ...
