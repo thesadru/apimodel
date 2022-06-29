@@ -1,5 +1,11 @@
 # APIModel
 
+[![Downloads](https://pepy.tech/badge/apimodels)](https://pepy.tech/project/apimodels)
+[![PyPI package](https://img.shields.io/pypi/v/apimodels)](https://pypi.org/project/apimodels/)
+[![Last Commit](https://img.shields.io/github/last-commit/thesadru/apimodel)](https://github.com/thesadru/apimodel/commits/master)
+[![Coverage](https://img.shields.io/codeclimate/coverage/thesadru/apimodel)](https://codeclimate.com/github/thesadru/apimodel)
+[![Documentation](https://readthedocs.org/projects/apimodel/badge)](https://apimodel.readthedocs.io/en/latest)
+
 Advanced models for non-standard modern JSON APIs.
 
 ---

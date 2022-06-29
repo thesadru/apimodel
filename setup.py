@@ -2,7 +2,7 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="api-model",
+    name="apimodels",
     version="0.0.1",
     author="thesadru",
     author_email="thesadru@gmail.com",
