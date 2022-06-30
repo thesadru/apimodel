@@ -30,18 +30,20 @@ else:
     try:
         from typing_extensions import Self
     except ImportError:
-        Self = typing.Any
+        Self = typing.TypeVar("Self")
 
 # ParamSpec
 if sys.version_info >= (3, 10):
     ParamSpec = typing.ParamSpec
+    Concatenate = typing.Concatenate
 elif typing.TYPE_CHECKING:
-    from typing_extensions import ParamSpec  # type: ignore # noqa
+    from typing_extensions import Concatenate, ParamSpec  # type: ignore # noqa
 else:
     try:
-        from typing_extensions import ParamSpec  # type: ignore # noqa
+        from typing_extensions import Concatenate, ParamSpec  # type: ignore # noqa
     except ImportError:
         ParamSpec = typing.TypeVar
+        Concatenate: type = type("Concatenate", (), {"__class_getitem__": lambda cls, *args: list(*args)})  # type: ignore
 
 # GenericAlias
 if sys.version_info >= (3, 9):

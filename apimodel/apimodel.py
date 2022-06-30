@@ -146,18 +146,18 @@ class APIModelMeta(type):
             or any(validator.isasync for validator in self.__root_validators__)
         )
 
-    @utility.as_universal
-    def _validate_universal(  # noqa # C901: too complex
+    @utility.as_universal_method
+    async def _validate_universal(  # noqa # C901: too complex
         self,
         obj: tutils.JSONMapping,
         *,
         instance: typing.Optional[APIModel] = None,
         extras: bool = False,
-    ) -> tutils.UniversalAsyncGenerator[tutils.JSONMapping]:
+    ) -> tutils.JSONMapping:
         """Universal validation.
 
         This method is used by both sync and async validation.
-        Yields the return values of validators which may potentially be async and expects a resolved value to be sent back.
+        awaits the return values of validators which may potentially be async and expects a resolved value to be sent back.
 
         If an instance is not passed in, a dummy instance will be created.
         """
@@ -172,7 +172,7 @@ class APIModelMeta(type):
         with errors.catch_errors(self) as catcher:
             for validator in _get_ordered(self.__root_validators__, order=validation.Order.INITIAL_ROOT):
                 with catcher.catch():
-                    obj = yield validator(instance, obj)
+                    obj = await validator(instance, obj)
 
         obj = dict(obj)
 
@@ -205,7 +205,7 @@ class APIModelMeta(type):
         with errors.catch_errors(self) as catcher:
             for validator in _get_ordered(self.__root_validators__, order=validation.Order.ROOT):
                 with catcher.catch():
-                    obj = yield validator(instance, obj)
+                    obj = await validator(instance, obj)
 
         # =============================
         # FIELD CHECK
@@ -225,7 +225,7 @@ class APIModelMeta(type):
                 for attr_name, field in self.__fields__.items():
                     for validator in _get_ordered(field.validators, order=order):
                         with catcher.catch(loc=attr_name):
-                            obj[attr_name] = yield validator(instance, obj[attr_name])
+                            obj[attr_name] = await validator(instance, obj[attr_name])
                             setattr(instance, attr_name, obj[attr_name])
 
         # =============================
@@ -233,7 +233,7 @@ class APIModelMeta(type):
         with errors.catch_errors(self) as catcher:
             for validator in _get_ordered(self.__root_validators__, order=validation.Order.FINAL_ROOT):
                 with catcher.catch():
-                    obj = yield validator(instance, obj)
+                    obj = await validator(instance, obj)
 
         # =============================
         return obj
@@ -250,7 +250,7 @@ class APIModelMeta(type):
         Returns the validated mapping.
         If an instance is not passed in, a dummy instance will be created.
         """
-        return self._validate_universal.synchronous(self, obj, instance=instance, extras=extras)
+        return self._validate_universal.synchronous(obj, instance=instance, extras=extras)
 
     async def validate(
         self,
@@ -264,7 +264,7 @@ class APIModelMeta(type):
         Returns the validated mapping.
         If an instance is not passed in, a dummy instance will be created.
         """
-        return await self._validate_universal.asynchronous(self, obj, instance=instance, extras=extras)
+        return await self._validate_universal.asynchronous(obj, instance=instance, extras=extras)
 
 
 class APIModel(utility.Representation, metaclass=APIModelMeta):

@@ -25,7 +25,7 @@ def model() -> apimodel.APIModel:
     ],
 )
 def test_datetime_validator(model: apimodel.APIModel, value: object, expected: datetime.datetime) -> None:
-    assert apimodel.parser.datetime_validator(model, value) == expected
+    assert apimodel.parser.datetime_validator.synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -36,12 +36,12 @@ def test_datetime_validator(model: apimodel.APIModel, value: object, expected: d
     ],
 )
 def test_timedelta_validator(model: apimodel.APIModel, value: object, expected: datetime.timedelta) -> None:
-    assert apimodel.parser.timedelta_validator(model, value) == expected
+    assert apimodel.parser.timedelta_validator.synchronous(model, value) == expected
 
 
 def test_noop_validator(model: apimodel.APIModel) -> None:
     value = object()
-    assert apimodel.parser.noop_validator(model, value) == value
+    assert apimodel.parser.noop_validator.synchronous(model, value) == value
 
 
 @pytest.mark.parametrize(
@@ -57,7 +57,7 @@ def test_cast_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.cast_validator(callback)(model, value) == expected
+    assert apimodel.parser.cast_validator(callback).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -73,7 +73,7 @@ def test_arbitrary_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.arbitrary_validator(tp)(model, value) == expected
+    assert apimodel.parser.arbitrary_validator(tp).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -89,7 +89,7 @@ def test_literal_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.literal_validator(values)(model, value) == expected
+    assert apimodel.parser.literal_validator(values).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -113,7 +113,7 @@ def test_collection_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.collection_validator(collection_type, inner_validator)(model, value) == expected
+    assert apimodel.parser.collection_validator(collection_type, inner_validator).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -136,7 +136,8 @@ def test_mapping_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.mapping_validator(mapping_type, key_validator, value_validator)(model, value) == expected
+    validator = apimodel.parser.mapping_validator(mapping_type, key_validator, value_validator)
+    assert validator.synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -157,7 +158,7 @@ def test_namedtuple(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.tuple_validator(tup)(model, value) == expected
+    assert apimodel.parser.tuple_validator(tup).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -173,7 +174,7 @@ def test_typeddict(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.typeddict_validator(typeddict)(model, value) == expected
+    assert apimodel.parser.typeddict_validator(typeddict).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -189,7 +190,7 @@ def test_union_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.union_validator(validators)(model, value) == expected
+    assert apimodel.parser.union_validator(validators).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(

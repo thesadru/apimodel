@@ -182,7 +182,7 @@ def collection_validator(
             collection_type = tuple
 
     @utility.as_universal
-    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[typing.Collection[object]]:
+    async def validator(model: apimodel.APIModel, value: object) -> typing.Collection[object]:
         if not isinstance(value, typing.Iterable):
             raise TypeError(f"Expected iterable, got {type(value)}")
 
@@ -193,7 +193,7 @@ def collection_validator(
         with errors.catch_errors(model) as catcher:
             for index, item in enumerate(value):
                 with catcher.catch(loc=index):
-                    items.append((yield inner_validator(model, item)))
+                    items.append((await inner_validator(model, item)))
 
         return collection_type(items)
 
@@ -216,7 +216,7 @@ def mapping_validator(
         mapping_type = dict
 
     @utility.as_universal
-    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
+    async def validator(model: apimodel.APIModel, value: object) -> object:
         if not isinstance(value, typing.Mapping):
             raise TypeError(f"Expected mapping, got {type(value)}")
 
@@ -227,7 +227,7 @@ def mapping_validator(
         with errors.catch_errors(model) as catcher:
             for key in value:
                 with catcher.catch(loc=str(key)):
-                    mapping[(yield key_validator(model, key))] = yield value_validator(model, value[key])
+                    mapping[(await key_validator(model, key))] = await value_validator(model, value[key])
 
         return mapping_type(mapping)
 
@@ -250,11 +250,11 @@ def union_validator(validators: typing.Sequence[validation.Validator]) -> Annota
         validators = [RAW_VALIDATORS[None]] + new_validators
 
     @utility.as_universal
-    def validator(model: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
+    async def validator(model: apimodel.APIModel, value: object) -> object:
         catcher = errors.ErrorCatcher(model)
         for index, validator in enumerate(validators):
             with catcher.catch(loc=f"Union[{index}]"):
-                return (yield validator(model, value))
+                return await validator(model, value)
 
         catcher.raise_errors()
 
@@ -307,7 +307,7 @@ def tuple_validator(tup: typing.Type[typing.Tuple[object, ...]]) -> AnnotationVa
     model = apimodel.create_model(name, **definitions)
 
     @utility.as_universal
-    def validator(root: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[typing.Tuple[object, ...]]:
+    async def validator(root: apimodel.APIModel, value: object) -> typing.Tuple[object, ...]:
         items: typing.Mapping[str, object]
 
         if isinstance(value, typing.Mapping):
@@ -317,7 +317,7 @@ def tuple_validator(tup: typing.Type[typing.Tuple[object, ...]]) -> AnnotationVa
         else:
             raise TypeError(f"Expected iterable, got {type(value)}")
 
-        items = yield from model._validate_universal(model, items)
+        items = await model._validate_universal(items)
 
         if hasattr(tup, "_fields"):
             return tup(**items)
@@ -341,15 +341,13 @@ def typeddict_validator(typeddict: typing.Type[typing.TypedDict]) -> AnnotationV
     model = apimodel.create_model(typeddict.__name__, **definitions)
 
     @utility.as_universal
-    def validator(root: apimodel.APIModel, value: object) -> tutils.UniversalAsyncGenerator[object]:
+    async def validator(root: apimodel.APIModel, value: object) -> object:
         if not isinstance(value, typing.Mapping):
             raise TypeError(f"Expected mapping, got {type(value)}")
 
         value = typing.cast("typing.Mapping[str, object]", value)
 
-        x = yield from model._validate_universal(model, value)
-
-        return x
+        return await model._validate_universal(value)
 
     if model.isasync:
         return as_validator(validator.asynchronous)
@@ -453,7 +451,7 @@ def get_validator(tp: object) -> AnnotationValidator:
 def cast(tp: object, value: object) -> object:
     """Cast the value to the given type."""
     validator = get_validator(tp)
-    return validator(apimodel.APIModel({}), value)
+    return validator.synchronous(apimodel.APIModel({}), value)
 
 
 def validate_arguments(callback: typing.Callable[..., T]) -> typing.Callable[..., T]:
@@ -472,14 +470,14 @@ def validate_arguments(callback: typing.Callable[..., T]) -> typing.Callable[...
 
         bound = signature.bind(*args, **kwargs)
         kwargs = {
-            name: validator(model, bound.arguments[name])
+            name: validator.synchronous(model, bound.arguments[name])
             for name, validator in validators.items()
             if name in bound.arguments
         }
 
         r = callback(**kwargs)
         if "return" in validators:
-            r = validators["return"](model, r)
+            r = validators["return"].synchronous(model, r)
 
         return r
 

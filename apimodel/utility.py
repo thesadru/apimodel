@@ -1,6 +1,8 @@
 """Utility functions for the library."""
 from __future__ import annotations
 
+import contextlib
+import inspect
 import typing
 
 from . import tutils
@@ -104,13 +106,16 @@ class UniversalAsync(typing.Generic[P, T]):
 
     __slots__ = ("callback",)
 
-    callback: typing.Callable[P, tutils.UniversalAsyncGenerator[T]]
+    callback: typing.Callable[P, tutils.MaybeAwaitable[T]]
 
-    def __init__(self, callback: typing.Callable[P, tutils.UniversalAsyncGenerator[T]]) -> None:
+    def __init__(self, callback: typing.Callable[P, tutils.MaybeAwaitable[T]]) -> None:
+        if isinstance(callback, UniversalAsync):
+            callback = callback.callback
+
         self.callback = callback
 
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> tutils.UniversalAsyncGenerator[T]:
-        return self.callback(*args, **kwargs)
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> T:
+        return await self.asynchronous(*args, **kwargs)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.callback!r})"
@@ -121,39 +126,58 @@ class UniversalAsync(typing.Generic[P, T]):
 
     def synchronous(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Run the callback synchronously."""
-        generator = self.callback(*args, **kwargs)
+        r = self.callback(*args, **kwargs)
+        if not inspect.isawaitable(r):
+            return typing.cast("T", r)
 
-        try:
-            value = generator.__next__()
-
-            while True:
-                if isinstance(value, typing.Awaitable):
-                    raise TypeError("Received awaitable in sync mode.")
-
-                value = generator.send(value)
-        except StopIteration as e:
-            return e.value
+        with contextlib.closing(r.__await__()) as gen:
+            try:
+                gen.send(None)
+            except StopIteration as e:
+                return e.value
+            else:
+                raise RuntimeError(f"Coroutine {self.callback!r} is not synchronous")
 
     async def asynchronous(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Run the callback asynchronously."""
-        generator = self.callback(*args, **kwargs)
+        r = self.callback(*args, **kwargs)
+        if not inspect.isawaitable(r):
+            return typing.cast("T", r)
 
-        try:
-            value = generator.__next__()
+        return await r
 
-            while True:
-                if isinstance(value, typing.Awaitable):
-                    value = typing.cast("T", await value)
-
-                value = generator.send(value)
-        except StopIteration as e:
-            return e.value
+    @property
+    def isasync(self) -> bool:
+        """Whether the callback is predictably a coroutine."""
+        return inspect.iscoroutinefunction(self.callback)
 
     def __pretty__(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""
         yield fmt(self.callback)
 
+    def __get__(
+        self: UniversalAsync[tutils.Concatenate[typing.Any, P], T],
+        instance: typing.Optional[object],
+        owner: typing.Type[object],
+    ) -> UniversalAsync[P, T]:
+        if instance is None:
+            return typing.cast("UniversalAsync[P, T]", self)
 
-def as_universal(callback: typing.Callable[P, tutils.UniversalAsyncGenerator[T]]) -> UniversalAsync[P, T]:
+        callback = typing.cast("typing.Callable[P, T]", self.callback.__get__(instance, type(instance)))
+
+        return typing.cast("type[UniversalAsync[P, T]]", self.__class__)(callback)
+
+
+def as_universal(callback: typing.Callable[P, tutils.MaybeAwaitable[T]]) -> UniversalAsync[P, T]:
     """Convert a callback to a UniversalAsync callback."""
     return UniversalAsync(callback)
+
+
+def as_universal_method(
+    callback: typing.Callable[tutils.Concatenate[typing.Any, P], tutils.MaybeAwaitable[T]],
+) -> UniversalAsync[P, T]:
+    """Convert a callback to a UniversalAsync callback.
+
+    Simulates a method in its typing to help type-checkers.
+    """
+    return typing.cast("UniversalAsync[P, T]", UniversalAsync(callback))

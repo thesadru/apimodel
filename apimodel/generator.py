@@ -140,7 +140,7 @@ def recognize_json_type(value: JSONType) -> RawSchema:
 
     if isinstance(value, str):
         try:
-            parser.datetime_validator(NotImplemented, value)
+            parser.datetime_validator.synchronous(NotImplemented, value)
         except (ValueError, TypeError, OSError):
             return "str"
         else:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import enum
+import inspect
 import typing
 
 from . import tutils, utility
@@ -58,20 +59,26 @@ class BaseValidator(utility.Representation):
 
         self.bound = False
 
-    def __call__(self, model: object, value: object) -> tutils.MaybeAwaitable[typing.Any]:
-        """Call the validator and optionally give it a model.
+    async def __call__(self, model: object, value: object) -> typing.Any:
+        """Call the validator and optionally give it a model."""
+        return await self.asynchronous(model, value)
 
-        May return an Awaitable if the callback is async.
-        """
+    @utility.as_universal_method
+    def asynchronous(self, model: object, value: object) -> typing.Any:
+        """Call the validator and optionally give it a model."""
         if self.bound:
             return self.callback(model, value)
         else:
             return self.callback(value)
 
+    def synchronous(self, model: object, value: object) -> typing.Any:
+        """Call the validator and optionally give it a model."""
+        return self.asynchronous.synchronous(model, value)
+
     @property
     def isasync(self) -> bool:
         """Whether the callback returns an awaitable."""
-        return asyncio.iscoroutinefunction(self.callback)
+        return inspect.iscoroutinefunction(self.callback)
 
     @property
     def _is_coroutine(self) -> object:
@@ -93,13 +100,6 @@ class Validator(BaseValidator):
         self._fields = ()
         super().__init__(callback, order=order)
 
-    def __call__(self, model: object, value: object) -> tutils.MaybeAwaitable[object]:
-        """Call the validator with a single value and optionally give it a model.
-
-        May return an Awaitable if the callback is async.
-        """
-        return super().__call__(model, value)
-
 
 class RootValidator(BaseValidator):
     """Root validator for an entire model."""
@@ -109,12 +109,12 @@ class RootValidator(BaseValidator):
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.INITIAL_ROOT) -> None:
         super().__init__(callback, order=order)
 
-    def __call__(self, model: object, values: tutils.JSONMapping) -> tutils.MaybeAwaitable[tutils.JSONMapping]:
+    async def __call__(self, model: object, values: tutils.JSONMapping) -> tutils.JSONMapping:
         """Call the validator with its dict and optionally give it a model.
 
         May return an Awaitable if the callback is async.
         """
-        return super().__call__(model, values)
+        return await super().__call__(model, values)
 
 
 def validator(*fields: str, order: int = Order.VALIDATOR) -> tutils.DecoratorCallable[Validator]:
