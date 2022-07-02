@@ -10,6 +10,10 @@ class Inner(apimodel.APIModel):
     required: int
     optional: typing.Optional[str] = None
 
+    @property
+    def magic(self) -> int:
+        return 42
+
 
 class Model(apimodel.APIModel):
     _special: object = apimodel.Extra()
@@ -35,7 +39,7 @@ def model():
 
 
 def test_as_dict(model: apimodel.APIModel) -> None:
-    assert model.as_dict() == {"integer": 0, "string": "foo", "nested": {"required": 24, "optional": None}}
+    assert model.as_dict() == {"integer": 0, "string": "foo", "nested": {"required": 24, "optional": None, "magic": 42}}
 
 
 def test_get_extras(model: apimodel.APIModel) -> None:

@@ -325,9 +325,30 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         """Update a model instance asynchronously."""
         return await self.__class__.validate(obj, instance=self, extras=True)
 
-    def as_dict(self, *, private: bool = False, alias: bool = False, **options: object) -> tutils.JSONMapping:
+    def _get_properties(self, private: bool = False) -> typing.Mapping[str, object]:
+        """Get properties of the model."""
+        properties: typing.Mapping[str, object] = {}
+
+        for name in dir(self.__class__):
+            if not private and name[0] == "_":
+                continue
+
+            cls_object = getattr(self.__class__, name)
+            if isinstance(cls_object, property):
+                properties[name] = getattr(self, name)
+
+        return properties
+
+    def as_dict(
+        self,
+        *,
+        private: bool = False,
+        properties: bool = True,
+        alias: bool = False,
+        **options: object,
+    ) -> typing.Mapping[str, object]:
         """Create a mapping from the model instance."""
-        obj: tutils.JSONMapping = {}
+        obj: typing.Mapping[str, object] = {}
 
         for attr_name, field in self.__class__.__fields__.items():
             if field.private and not private:
@@ -336,6 +357,9 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             field_name = field.name if alias else attr_name
             attr = getattr(self, attr_name)
             obj[field_name] = _serialize_attr(attr, private=private, alias=alias)
+
+        if properties:
+            obj.update(self._get_properties())
 
         return obj
 
@@ -351,7 +375,10 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         return obj
 
     def __repr_args__(self) -> typing.Mapping[str, object]:
-        return {attr: getattr(self, attr) for attr in self.__class__.__fields__}
+        args: typing.Mapping[str, object] = {}
+        args.update({attr: getattr(self, attr) for attr in self.__class__.__fields__})
+        args.update(self._get_properties(private=True))
+        return args
 
     @classmethod
     def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:

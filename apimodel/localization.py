@@ -116,12 +116,13 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
         self,
         *,
         private: bool = False,
+        properties: bool = True,
         alias: bool = False,
         locale: typing.Optional[str] = None,
         **options: object,
-    ) -> tutils.JSONMapping:
+    ) -> typing.Mapping[str, object]:
         """Create a mapping from the model instance."""
-        obj: tutils.JSONMapping = {}
+        obj: typing.Mapping[str, object] = {}
 
         locale = locale or self.locale
 
@@ -142,5 +143,8 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
                 value = field.get_localized_value(value, self.__class__.i18n, locale)
 
             obj[field_name] = value
+
+        if properties:
+            obj.update(self._get_properties())
 
         return obj

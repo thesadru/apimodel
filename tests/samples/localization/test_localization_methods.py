@@ -18,6 +18,11 @@ class User(apimodel.LocalizedAPIModel):
     username: str
     password: str
 
+    @property
+    def email(self) -> str:
+        domain = self.locale.split("-")[-1] if self.locale else "net"
+        return self.username + "@example." + domain
+
 
 class Model(apimodel.LocalizedAPIModel):
     users: typing.Sequence[User]
@@ -73,7 +78,10 @@ def test_as_dict(data: typing.Mapping[str, object]) -> None:
         "string": "foo",
         "color": 0xFFFFFF,
         "timestamp": datetime.datetime(2020, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc),
-        "users": [{"username": "foo", "password": "bar"}, {"username": "baz", "password": "qux"}],
+        "users": [
+            {"username": "foo", "password": "bar", "email": "foo@example.net"},
+            {"username": "baz", "password": "qux", "email": "baz@example.net"},
+        ],
     }
     assert "colour" in model.as_dict(locale="en-gb")
 
@@ -84,7 +92,7 @@ def test_as_dict(data: typing.Mapping[str, object]) -> None:
         "couleur": 0xFFFFFF,
         "horodatage": "01. 01. 2020 12:00:00",
         "utilisateurs": [
-            {"nom d'utilisateur": "foo", "mot de passe": "bar"},
-            {"nom d'utilisateur": "baz", "mot de passe": "qux"},
+            {"nom d'utilisateur": "foo", "mot de passe": "bar", "email": "foo@example.fr"},
+            {"nom d'utilisateur": "baz", "mot de passe": "qux", "email": "baz@example.fr"},
         ],
     }
