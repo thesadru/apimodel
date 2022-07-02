@@ -23,6 +23,11 @@ def _serialize_attr(attr: object, **kwargs: object) -> object:
     """Serialize an attribute."""
     if isinstance(attr, APIModel):
         return attr.as_dict(**kwargs)
+    if isinstance(attr, typing.Mapping):
+        return {
+            _serialize_attr(k, **kwargs): _serialize_attr(v, **kwargs)
+            for k, v in typing.cast("typing.Mapping[object, object]", attr).items()
+        }
     if isinstance(attr, typing.Collection) and not isinstance(attr, str):
         return [_serialize_attr(x, **kwargs) for x in typing.cast("typing.Collection[object]", attr)]
 
