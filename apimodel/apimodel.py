@@ -167,6 +167,18 @@ class APIModelMeta(type):
         self = typing.cast("typing.Type[APIModel]", self)
 
         # =============================
+        # EXTRAS
+        if extras:
+            with errors.catch_errors(self) as catcher:
+                for attr_name, extra in self.__extras__.items():
+                    if extra.name in obj:
+                        setattr(instance, attr_name, obj[extra.name])
+                    elif extra.default is not ...:
+                        setattr(instance, attr_name, extra.default)
+                    else:
+                        catcher.add_error(TypeError(f"Missing required extra field: {extra.name!r}"), loc=attr_name)
+
+        # =============================
         # INITIAL ROOT
 
         with errors.catch_errors(self) as catcher:
@@ -177,7 +189,7 @@ class APIModelMeta(type):
         obj = dict(obj)
 
         # =============================
-        # ALIAS / EXTRAS
+        # ALIAS
         new_obj: tutils.JSONMapping = {}
 
         for attr_name, field in self.__fields__.items():
@@ -187,16 +199,6 @@ class APIModelMeta(type):
             if field.name in obj:
                 setattr(instance, attr_name, obj[field.name])
                 new_obj[attr_name] = obj[field.name]
-
-        if extras:
-            with errors.catch_errors(self) as catcher:
-                for attr_name, extra in self.__extras__.items():
-                    if extra.name in obj:
-                        setattr(instance, attr_name, obj[extra.name])
-                    elif extra.default is not ...:
-                        setattr(instance, attr_name, extra.default)
-                    else:
-                        catcher.add_error(TypeError(f"Missing required extra field: {extra.name!r}"), loc=attr_name)
 
         obj = new_obj
 
