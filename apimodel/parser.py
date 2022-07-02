@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import enum
 import functools
 import inspect
 import typing
@@ -161,6 +162,30 @@ def literal_validator(values: typing.Collection[object]) -> AnnotationValidator:
             raise TypeError(f"Expected one of {values}, got {value!r}")
 
     return validator
+
+
+@debuggable_deco
+def enum_validator(enum_type: typing.Type[enum.Enum]) -> AnnotationValidator:
+    """Validate an enum."""
+    if len(enum_type.__mro__) >= 3 and not tutils.lenient_issubclass(enum_type.__mro__[-3], enum.Enum):
+        tp = enum_type.__mro__[-3]
+    else:
+        tp = object
+
+    try:
+        inner_validator = get_validator(tp)
+    except Exception:
+        inner_validator = noop_validator
+
+    @utility.as_universal
+    async def validator(model: apimodel.APIModel, value: object) -> object:
+        value = await inner_validator(model, value)
+        return typing.cast("enum.Enum", enum_type(value))
+
+    if inner_validator.isasync:
+        return as_validator(validator.asynchronous)
+    else:
+        return as_validator(validator.synchronous)
 
 
 @debuggable_deco
@@ -424,6 +449,9 @@ def get_validator(tp: object) -> AnnotationValidator:
     if validator := RAW_VALIDATORS.get(tp):
         return validator
 
+    if tutils.lenient_issubclass(origin, enum.Enum):
+        return enum_validator(origin)
+
     if tutils.lenient_issubclass(origin, apimodel.APIModel):
         return model_validator(origin)
     if tutils.lenient_issubclass(origin, tuple) and (not args or args[-1] != ...):
@@ -443,13 +471,22 @@ def get_validator(tp: object) -> AnnotationValidator:
         return literal_validator(args)
 
     if isinstance(tp, type):
+        if validator := getattr(tp, "__validator__", None):
+            return AnnotationValidator(validator)
+
         return arbitrary_validator(tp)
 
     raise TypeError(f"Unknown annotation: {tp!r}. Use Annotated[{tp!r}, object] to disable the default validator.")
 
 
-def cast(tp: object, value: object) -> object:
+async def cast(tp: typing.Type[T], value: object) -> T:
     """Cast the value to the given type."""
+    validator = get_validator(tp)
+    return await validator(apimodel.APIModel({}), value)
+
+
+def cast_sync(tp: typing.Type[T], value: object) -> T:
+    """Cast the value to the given type synchronously."""
     validator = get_validator(tp)
     return validator.synchronous(apimodel.APIModel({}), value)
 

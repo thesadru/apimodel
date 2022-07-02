@@ -1,5 +1,6 @@
 import collections
 import datetime
+import enum
 import sys
 import typing
 
@@ -90,6 +91,22 @@ def test_literal_validator(
     expected: object,
 ) -> None:
     assert apimodel.parser.literal_validator(values).synchronous(model, value) == expected
+
+
+@pytest.mark.parametrize(
+    ("enum_type", "value", "expected"),
+    [
+        (typing.cast("type[enum.Enum]", enum.IntEnum("IntFoo", {"foo": 1, "bar": 2})), "2", 2),
+        (typing.cast("type[enum.Enum]", enum.Enum("StrFoo", {"foo": "FOO", "bar": "BAR"}, type=str)), "FOO", "FOO"),
+    ],
+)
+def test_enum_validator(
+    model: apimodel.APIModel,
+    enum_type: typing.Type[enum.Enum],
+    value: object,
+    expected: object,
+) -> None:
+    assert apimodel.parser.enum_validator(enum_type).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -204,7 +221,7 @@ def test_union_validator(
     ],
 )
 def test_cast(tp: type, value: object, expected: object) -> None:
-    assert apimodel.parser.cast(tp, value) == expected
+    assert apimodel.parser.cast_sync(tp, value) == expected
 
 
 def test_validate_arguments() -> None:

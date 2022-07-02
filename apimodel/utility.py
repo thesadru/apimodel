@@ -160,9 +160,6 @@ class UniversalAsync(typing.Generic[P, T]):
         instance: typing.Optional[object],
         owner: typing.Type[object],
     ) -> UniversalAsync[P, T]:
-        if instance is None:
-            return typing.cast("UniversalAsync[P, T]", self)
-
         callback = typing.cast("typing.Callable[P, T]", self.callback.__get__(instance, type(instance)))
 
         return typing.cast("type[UniversalAsync[P, T]]", self.__class__)(callback)
@@ -174,7 +171,7 @@ def as_universal(callback: typing.Callable[P, tutils.MaybeAwaitable[T]]) -> Univ
 
 
 def as_universal_method(
-    callback: typing.Callable[tutils.Concatenate[typing.Any, P], tutils.MaybeAwaitable[T]],
+    callback: typing.Callable[tutils.Concatenate[typing.Any, P], tutils.MaybeAwaitable[T]]
 ) -> UniversalAsync[P, T]:
     """Convert a callback to a UniversalAsync callback.
 

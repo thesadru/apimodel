@@ -120,7 +120,7 @@ class ErrorCatcher:
     def raise_errors(self) -> None:
         """Raise errors."""
         if self.errors:
-            raise ValidationError(self.errors, model=self.model)
+            raise ValidationError(self.errors, model=self.model) from self.errors[0].error
 
 
 @contextlib.contextmanager
