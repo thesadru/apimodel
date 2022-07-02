@@ -15,7 +15,7 @@ def localize_datetime(dt: datetime.datetime, locale: str) -> str:
 
 
 class User(apimodel.LocalizedAPIModel):
-    username: str
+    username: str = apimodel.Field(name="name")
     password: str
 
     @property
@@ -67,7 +67,7 @@ def data() -> typing.Mapping[str, object]:
         "string": "foo",
         "color": 0xFFFFFF,
         "timestamp": datetime.datetime(2020, 1, 1, 12, 0, 0),
-        "users": [{"username": "foo", "password": "bar"}, {"username": "baz", "password": "qux"}],
+        "users": [{"name": "foo", "password": "bar"}, {"name": "baz", "password": "qux"}],
     }
 
 

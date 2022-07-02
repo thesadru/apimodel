@@ -49,12 +49,13 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
         self,
         provider: typing.Mapping[str, typing.Mapping[str, str]],
         locale: str,
+        name: typing.Optional[str] = None,
     ) -> str:
         """Get the localized name of the field."""
-        i18n = self.i18n or self.name
+        i18n = self.i18n or name or self.name
 
         if isinstance(i18n, str):
-            return provider[locale].get(i18n, self.name)
+            return provider[locale].get(i18n, name or self.name)
 
         return i18n[locale]
 
@@ -130,12 +131,10 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
             if field.private and not private:
                 continue
 
-            if alias:
-                field_name = field.name
-            elif locale is not None:
-                field_name = field.get_localized_name(self.__class__.i18n, locale)
-            else:
-                field_name = attr_name
+            field_name = field.name if alias else attr_name
+
+            if locale is not None:
+                field_name = field.get_localized_name(self.__class__.i18n, locale, name=field_name)
 
             value = apimodel._serialize_attr(getattr(self, attr_name), private=private, alias=alias, locale=locale)
 
