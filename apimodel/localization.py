@@ -21,7 +21,7 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
     """Localized field names."""
 
     localizator: typing.Optional[typing.Callable[[typing.Any, str], typing.Optional[object]]]
-    """Getter for localized values of the field."""
+    """Getter for localized values of the field. Called in `LocalizedAPIModel.as_dict`."""
 
     def __init__(
         self,
@@ -34,6 +34,10 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
         localizator: typing.Optional[typing.Callable[[typing.Any, str], typing.Optional[object]]] = None,
         **extra: typing.Any,
     ) -> None:
+        """Initialize a LocalizedFieldInfo.
+
+        Extra arguments may be repurposed for subclass attributes.
+        """
         self.i18n = i18n
         self.localizator = localizator
 
@@ -81,7 +85,7 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
     __fields__: typing.Mapping[str, LocalizedFieldInfo]
 
     i18n: typing.ClassVar[typing.Dict[str, typing.Dict[str, str]]] = collections.defaultdict(dict)
-    """Internationalization mapping of `{locale: {key: "localized string"}}`."""
+    """Internationalization mapping of ``{locale: {key: "localized string"}}``."""
 
     def __new__(
         cls,
@@ -118,11 +122,19 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
         *,
         private: bool = False,
         properties: bool = True,
-        alias: bool = False,
+        alias: typing.Optional[bool] = None,
         locale: typing.Optional[str] = None,
         **options: object,
     ) -> typing.Mapping[str, object]:
-        """Create a mapping from the model instance."""
+        """Create a mapping from the model instance.
+
+        Args:
+            private: Include private attributes (prefixed with an underscore `_`).
+            properties: Include methods decorated with `@property`.
+            alias: Rename fields to their declared name if they cannot be localized.
+                If `False`, do not rename any field even if it can be localized.
+            locale: Locale to use for localization. By default the locale of the model instance is used.
+        """
         obj: typing.Mapping[str, object] = {}
 
         locale = locale or self.locale
@@ -133,7 +145,7 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
 
             field_name = field.name if alias else attr_name
 
-            if locale is not None:
+            if locale is not None and alias is not False:
                 field_name = field.get_localized_name(self.__class__.i18n, locale, name=field_name)
 
             value = apimodel._serialize_attr(getattr(self, attr_name), private=private, alias=alias, locale=locale)

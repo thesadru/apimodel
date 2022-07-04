@@ -352,7 +352,13 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         alias: bool = False,
         **options: object,
     ) -> typing.Mapping[str, object]:
-        """Create a mapping from the model instance."""
+        """Create a mapping from the model instance.
+
+        Args:
+            private: Include private attributes (prefixed with an underscore `_`).
+            properties: Include methods decorated with `@property`.
+            alias: Rename fields to their declared name.
+        """
         obj: typing.Mapping[str, object] = {}
 
         for attr_name, field in self.__class__.__fields__.items():

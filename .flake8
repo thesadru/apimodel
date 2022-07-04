@@ -25,6 +25,6 @@ max-line-length = 130
 max_annotations_complexity = 5
 
 accept-encodings = utf-8
-docstring-convention = numpy
+docstring-convention = google
 ignore-decorators = property
 requirements_file = requirements.txt

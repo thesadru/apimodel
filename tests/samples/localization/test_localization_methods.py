@@ -73,6 +73,7 @@ def data() -> typing.Mapping[str, object]:
 
 def test_as_dict(data: typing.Mapping[str, object]) -> None:
     model = Model(data)
+    # nothing gets localized by default
     assert model.as_dict() == {
         "number": 0,
         "string": "foo",
@@ -83,8 +84,11 @@ def test_as_dict(data: typing.Mapping[str, object]) -> None:
             {"username": "baz", "password": "qux", "email": "baz@example.net"},
         ],
     }
+
+    # localization should work if we specify the locale
     assert "colour" in model.as_dict(locale="en-gb")
 
+    # fields should get localized too
     fr_model = Model(data, locale="fr-fr")
     assert fr_model.as_dict() == {
         "nombre": 0,
@@ -94,5 +98,18 @@ def test_as_dict(data: typing.Mapping[str, object]) -> None:
         "utilisateurs": [
             {"nom d'utilisateur": "foo", "mot de passe": "bar", "email": "foo@example.fr"},
             {"nom d'utilisateur": "baz", "mot de passe": "qux", "email": "baz@example.fr"},
+        ],
+    }
+
+    # fields shouldn't get localized when aliasing is disabled
+    de_model = Model(data, locale="de-de")
+    assert de_model.as_dict(alias=False) == {
+        "number": 0,
+        "string": "foo",
+        "color": 0xFFFFFF,
+        "timestamp": "01. 01. 2020 12:00:00",
+        "users": [
+            {"username": "foo", "password": "bar", "email": "foo@example.de"},
+            {"username": "baz", "password": "qux", "email": "baz@example.de"},
         ],
     }

@@ -54,6 +54,8 @@ def docs(session: nox.Session) -> None:
             os.path.abspath(PACKAGE),
             "--ignore",
             os.path.abspath("docs/reference"),
+            "--ignore",
+            "*.tmp",
         )
     else:
         session.run("sphinx-build", "-M", "dirhtml", "docs", output)

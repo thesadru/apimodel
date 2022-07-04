@@ -97,6 +97,7 @@ class Validator(BaseValidator):
     _fields: typing.Sequence[str]
 
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.VALIDATOR) -> None:
+        """Initialize a standard field validator. Order cannot have ROOT."""
         self._fields = ()
         super().__init__(callback, order=order)
 
@@ -107,6 +108,7 @@ class RootValidator(BaseValidator):
     __slots__ = ()
 
     def __init__(self, callback: tutils.AnyCallable, *, order: int = Order.INITIAL_ROOT) -> None:
+        """Initialize a root validator. Order must have ROOT."""
         super().__init__(callback, order=order)
 
     async def __call__(self, model: object, values: tutils.JSONMapping) -> tutils.JSONMapping:
