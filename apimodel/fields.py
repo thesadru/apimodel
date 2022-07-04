@@ -61,15 +61,17 @@ class FieldInfo(utility.Representation):
         self.private = private
         self.extra = extra
 
-        self.validators = [
-            callback if isinstance(callback, validation.Validator) else validation.Validator(callback)
-            for callback in utility.flatten_sequences(validators)
-        ]
-        self.validators.sort(key=lambda v: v.order)
+        self.validators = []
+        self.add_validators(*utility.flatten_sequences(validators))
 
-    def add_validators(self, *validators: validation.Validator) -> None:
+    def add_validators(self, *validators: typing.Union[validation.Validator, tutils.AnyCallable]) -> None:
         """Properly add validators to the field."""
-        self.validators += validators
+        for callback in validators:
+            if isinstance(callback, validation.Validator):
+                self.validators.append(callback)
+            else:
+                self.validators.append(validation.Validator(callback))
+
         self.validators.sort(key=lambda v: v.order)
 
 

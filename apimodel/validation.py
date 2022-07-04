@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import enum
-import inspect
 import typing
 
 from . import tutils, utility
@@ -78,7 +77,7 @@ class BaseValidator(utility.Representation):
     @property
     def isasync(self) -> bool:
         """Whether the callback returns an awaitable."""
-        return inspect.iscoroutinefunction(self.callback)
+        return asyncio.iscoroutinefunction(self.callback)
 
     @property
     def _is_coroutine(self) -> object:

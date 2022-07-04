@@ -29,10 +29,10 @@ def test_inheritance():
 
 
 def test_inheritance_slots():
-    assert apimodel.utility.get_slots(Child()) == {"foo", "bar"}
+    assert set(apimodel.utility.get_slots(Child())) == {"foo", "bar"}
     assert Child().__slots__ == ("bar",)
     # TODO: __dict__ still present
 
     assert hasattr(UnslottedBase(), "__dict__")
     assert hasattr(UnslottedChild(), "__dict__")
-    assert apimodel.utility.get_slots(UnslottedBase()) == {"foo"}
+    assert apimodel.utility.get_slots(UnslottedBase()) == ("foo",)

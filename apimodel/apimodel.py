@@ -23,13 +23,10 @@ def _serialize_attr(attr: object, **kwargs: object) -> object:
     """Serialize an attribute."""
     if isinstance(attr, APIModel):
         return attr.as_dict(**kwargs)
-    if isinstance(attr, typing.Mapping):
-        return {
-            _serialize_attr(k, **kwargs): _serialize_attr(v, **kwargs)
-            for k, v in typing.cast("typing.Mapping[object, object]", attr).items()
-        }
-    if isinstance(attr, typing.Collection) and not isinstance(attr, str):
-        return [_serialize_attr(x, **kwargs) for x in typing.cast("typing.Collection[object]", attr)]
+    if tutils.generic_isinstance(attr, typing.Mapping[object, object]):
+        return {_serialize_attr(k, **kwargs): _serialize_attr(v, **kwargs) for k, v in attr.items()}
+    if tutils.generic_isinstance(attr, typing.Sequence[object], exclude=str):
+        return [_serialize_attr(x, **kwargs) for x in attr]
 
     return attr
 
@@ -432,8 +429,7 @@ def create_model(
         if isinstance(attr, (fields.FieldInfo, fields.ExtraInfo)):
             namespace[name] = attr
             annotations[attr] = attr.tp if isinstance(attr, fields.ModelFieldInfo) else object
-        elif isinstance(attr, tuple):
-            attr = typing.cast("typing.Tuple[object, object]", attr)
+        elif tutils.generic_isinstance(attr, typing.Tuple[object, object]):
             if len(attr) != 2:
                 raise TypeError("Tuple must be (type, default)")
 

@@ -1,7 +1,6 @@
 """Parser functions for various types."""
 from __future__ import annotations
 
-import asyncio
 import datetime
 import enum
 import functools
@@ -21,16 +20,17 @@ T = typing.TypeVar("T")
 class AnnotationValidator(validation.Validator):
     """Special validator for annotations."""
 
-    __slots__ = ("tp",)
+    __slots__ = ("tp", "_isasync")
 
     tp: object
 
-    def __init__(self, callback: tutils.AnyCallable) -> None:
+    def __init__(self, callback: tutils.AnyCallable, *, isasync: bool = False) -> None:
         """Initialize an AnnotationValidator.
 
         The callback must have an annotated return type.
         """
         super().__init__(callback, order=validation.Order.ANNOTATION)
+        self._isasync = isasync
 
         try:
             self.tp = typing.get_type_hints(callback)["return"]
@@ -40,11 +40,15 @@ class AnnotationValidator(validation.Validator):
     def __repr_args__(self) -> typing.Mapping[str, object]:
         return {"callback": self.callback}
 
+    @property
+    def isasync(self) -> bool:
+        return self._isasync
 
-def as_validator(callback: tutils.ValidatorSig) -> AnnotationValidator:
+
+def as_validator(callback: tutils.ValidatorSig, *, isasync: bool = False) -> AnnotationValidator:
     """Convert a validator function to a validator class."""
     signature = inspect.signature(callback)
-    validator = AnnotationValidator(callback)
+    validator = AnnotationValidator(callback, isasync=isasync)
     if len(signature.parameters) >= 2:
         validator.bound = True
 
@@ -62,15 +66,10 @@ def debuggable_deco(func: tutils.CallableT) -> tutils.CallableT:
         callback = obj
         if isinstance(obj, validation.Validator):
             callback = obj.callback
-        if inspect.ismethod(callback) and isinstance(callback.__self__, utility.UniversalAsync):
-            callback = callback.__self__.callback
-
-        call = Call((func.__name__, args, kwargs))
-        notation = repr(call)[5:]
-        if asyncio.iscoroutinefunction(obj):
-            notation = "async " + notation
 
         if inspect.isfunction(callback):
+            call = Call((func.__name__, args, kwargs))
+            notation = repr(call)[5:]
             callback.__qualname__ = notation
 
         if not hasattr(callback, "__pretty__"):
@@ -148,9 +147,9 @@ def arbitrary_validator(tp: type) -> AnnotationValidator:
 
 
 @debuggable_deco
-def literal_validator(values: typing.Collection[object]) -> AnnotationValidator:
+def literal_validator(*args: object) -> AnnotationValidator:
     """Check if the value is one of the given literals."""
-    values = set(values)
+    values = set(args)
 
     @as_validator
     def validator(value: object) -> object:
@@ -187,15 +186,11 @@ def enum_validator(enum_type: typing.Type[enum.Enum]) -> AnnotationValidator:
     except Exception:
         inner_validator = noop_validator
 
-    @utility.as_universal
     async def validator(model: apimodel.APIModel, value: object) -> object:
         value = await inner_validator(model, value)
         return typing.cast("enum.Enum", enum_type(value))
 
-    if inner_validator.isasync:
-        return as_validator(validator.asynchronous)
-    else:
-        return as_validator(validator.synchronous)
+    return as_validator(validator, isasync=inner_validator.isasync)
 
 
 @debuggable_deco
@@ -216,12 +211,11 @@ def collection_validator(
         else:
             collection_type = tuple
 
-    @utility.as_universal
     async def validator(model: apimodel.APIModel, value: object) -> typing.Collection[object]:
-        if not isinstance(value, typing.Iterable):
+        if not tutils.generic_isinstance(value, typing.Iterable[object]):
             raise TypeError(f"Expected iterable, got {type(value)}")
 
-        value = typing.cast("typing.Iterable[object]", value)
+        value = value
 
         items: typing.Collection[object] = []
 
@@ -232,10 +226,7 @@ def collection_validator(
 
         return collection_type(items)
 
-    if inner_validator.isasync:
-        return as_validator(validator.asynchronous)
-    else:
-        return as_validator(validator.synchronous)
+    return as_validator(validator, isasync=inner_validator.isasync)
 
 
 @debuggable_deco
@@ -250,12 +241,9 @@ def mapping_validator(
     if inspect.isabstract(mapping_type):
         mapping_type = dict
 
-    @utility.as_universal
     async def validator(model: apimodel.APIModel, value: object) -> object:
-        if not isinstance(value, typing.Mapping):
+        if not tutils.generic_isinstance(value, typing.Mapping[object, object]):
             raise TypeError(f"Expected mapping, got {type(value)}")
-
-        value = typing.cast("typing.Mapping[object, object]", value)
 
         mapping: typing.Mapping[object, object] = {}
 
@@ -266,25 +254,23 @@ def mapping_validator(
 
         return mapping_type(mapping)
 
-    if key_validator.isasync or value_validator.isasync:
-        return as_validator(validator.asynchronous)
-    else:
-        return as_validator(validator.synchronous)
+    return as_validator(validator, isasync=key_validator.isasync or value_validator.isasync)
 
 
 @debuggable_deco
-def union_validator(validators: typing.Sequence[validation.Validator]) -> AnnotationValidator:
+def union_validator(*validators: validation.Validator) -> AnnotationValidator:
     """Return the first successful validator."""
     # shift None to the start
-    new_validators = [
+    new_validators = tuple(
         validator
         for validator in validators
         if isinstance(validator, AnnotationValidator) and validator.tp not in tutils.NoneTypes
-    ]
+    )
     if len(validators) != len(new_validators):
-        validators = [RAW_VALIDATORS[None]] + new_validators
+        validators = (RAW_VALIDATORS[None],) + new_validators
 
-    @utility.as_universal
+    del new_validators
+
     async def validator(model: apimodel.APIModel, value: object) -> object:
         catcher = errors.ErrorCatcher(model)
         for index, validator in enumerate(validators):
@@ -293,10 +279,7 @@ def union_validator(validators: typing.Sequence[validation.Validator]) -> Annota
 
         catcher.raise_errors()
 
-    if any(validator.isasync for validator in validators):
-        return as_validator(validator.asynchronous)
-    else:
-        return as_validator(validator.synchronous)
+    return as_validator(validator, isasync=any(validator.isasync for validator in validators))
 
 
 @debuggable_deco
@@ -304,24 +287,13 @@ def model_validator(model: typing.Type[apimodel.APIModel]) -> AnnotationValidato
     """Validate a model."""
     # TODO: Generics
 
-    @as_validator
-    def sync_validator(root: apimodel.APIModel, value: object) -> object:
-        if isinstance(value, model):
-            return value
-
-        return model(value, **root.get_extras())
-
-    @as_validator
-    async def async_validator(root: apimodel.APIModel, value: object) -> object:
+    async def validator(root: apimodel.APIModel, value: object) -> object:
         if isinstance(value, model):
             return value
 
         return await model.create(value, **root.get_extras())
 
-    if model.isasync:
-        return async_validator
-    else:
-        return sync_validator
+    return as_validator(validator, isasync=model.isasync)
 
 
 @debuggable_deco
@@ -341,14 +313,13 @@ def tuple_validator(tup: typing.Type[typing.Tuple[object, ...]]) -> AnnotationVa
     definitions = {name: (types.get(name, object), defaults.get(name, ...)) for name in fields}
     model = apimodel.create_model(name, **definitions)
 
-    @utility.as_universal
-    async def validator(root: apimodel.APIModel, value: object) -> typing.Tuple[object, ...]:
+    async def validator(value: object) -> typing.Tuple[object, ...]:
         items: typing.Mapping[str, object]
 
-        if isinstance(value, typing.Mapping):
+        if tutils.generic_isinstance(value, typing.Mapping[str, object]):
             items = value
-        elif isinstance(value, typing.Iterable):
-            items = dict(zip(fields, typing.cast("typing.Iterable[object]", value)))
+        elif tutils.generic_isinstance(value, typing.Iterable[object]):
+            items = dict(zip(fields, value))
         else:
             raise TypeError(f"Expected iterable, got {type(value)}")
 
@@ -360,10 +331,7 @@ def tuple_validator(tup: typing.Type[typing.Tuple[object, ...]]) -> AnnotationVa
             tp = typing.get_origin(tup) or tup
             return tp(tuple(items.values()))
 
-    if model.isasync:
-        return as_validator(validator.asynchronous)
-    else:
-        return as_validator(validator.synchronous)
+    return as_validator(validator, isasync=model.isasync)
 
 
 @debuggable_deco
@@ -375,8 +343,7 @@ def typeddict_validator(typeddict: typing.Type[typing.TypedDict]) -> AnnotationV
     }
     model = apimodel.create_model(typeddict.__name__, **definitions)
 
-    @utility.as_universal
-    async def validator(root: apimodel.APIModel, value: object) -> object:
+    async def validator(value: object) -> object:
         if not isinstance(value, typing.Mapping):
             raise TypeError(f"Expected mapping, got {type(value)}")
 
@@ -384,10 +351,7 @@ def typeddict_validator(typeddict: typing.Type[typing.TypedDict]) -> AnnotationV
 
         return await model._validate_universal(value)
 
-    if model.isasync:
-        return as_validator(validator.asynchronous)
-    else:
-        return as_validator(validator.synchronous)
+    return as_validator(validator, isasync=model.isasync)
 
 
 RAW_VALIDATORS: typing.Mapping[object, AnnotationValidator] = {
@@ -399,8 +363,8 @@ RAW_VALIDATORS: typing.Mapping[object, AnnotationValidator] = {
     datetime.datetime: datetime_validator,
     datetime.timedelta: timedelta_validator,
     object: noop_validator,
-    None: literal_validator([None]),
-    type(None): literal_validator([None]),
+    None: literal_validator(None),
+    type(None): literal_validator(None),
 }
 
 if not typing.TYPE_CHECKING:
@@ -454,7 +418,7 @@ def get_validator(tp: object) -> AnnotationValidator:
     # TODO any other forms of unions?
     if origin in tutils.UnionTypes:
         validators = [get_validator(arg) for arg in args]
-        return union_validator(validators)
+        return union_validator(*validators)
 
     if validator := RAW_VALIDATORS.get(tp):
         return validator
@@ -478,7 +442,7 @@ def get_validator(tp: object) -> AnnotationValidator:
         return collection_validator(origin, validator)
 
     if origin == typing.Literal:
-        return literal_validator(args)
+        return literal_validator(*args)
 
     if isinstance(tp, type):
         if validator := getattr(tp, "__validator__", None):

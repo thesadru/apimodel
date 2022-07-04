@@ -104,7 +104,32 @@ def format_field_default(field: Field) -> str:
     return f"apimodel.Field({', '.join(args)})"
 
 
-def join_union(raw_values: typing.Sequence[T]) -> tutils.MaybeTuple[T]:
+def join_mappings(mappings: typing.Sequence[typing.Mapping[str, T]]) -> typing.Mapping[str, tutils.MaybeTuple[T]]:
+    """Join a sequence of mappings."""
+    output: typing.Mapping[str, tutils.MaybeTuple[T]] = {}
+    for index, mapping in enumerate(mappings):
+        for k, value in mapping.items():
+            # do not set missing values in the first run
+            if index == 0:
+                output[k] = value
+                continue
+
+            new_value = join_union(output.get(k, "None"), value)
+
+            # if the current value should be an array and the old value was an array / missing
+            # cast the new value to an array to prevent confusion with a union
+            if isinstance(value, list) and (k not in output or isinstance(output[k], list)):
+                if not tutils.generic_isinstance(new_value, typing.Sequence[object]):
+                    new_value = [new_value]
+
+                new_value = list(new_value)
+
+            output[k] = new_value
+
+    return output
+
+
+def join_union(*raw_values: T) -> tutils.MaybeTuple[T]:
     """Join a union with an emphasis on mappings.
 
     Return a tuple if there are multiple values.
@@ -116,15 +141,7 @@ def join_union(raw_values: typing.Sequence[T]) -> tutils.MaybeTuple[T]:
 
     if values and all(isinstance(value, typing.Mapping) for value in values):
         values = typing.cast("typing.Sequence[typing.Mapping[str, T]]", values)
-        mapping: typing.Mapping[str, tutils.MaybeTuple[T]] = {}
-        for index, value in enumerate(values):
-            for k, v in value.items():
-                new_v = join_union((mapping.get(k, v if index == 0 else "None"), v))
-                if isinstance(v, list) and (k not in mapping or isinstance(mapping[k], list)):
-                    new_v = list(typing.cast("tuple[object, ...]", new_v)) if isinstance(new_v, tuple) else [new_v]
-
-                mapping[k] = new_v
-
+        mapping = join_mappings(values)
         return typing.cast("T", mapping)
 
     if len(values) == 1:
@@ -148,7 +165,7 @@ def recognize_json_type(value: JSONType) -> RawSchema:
 
     if isinstance(value, typing.Sequence):
         values = [recognize_json_type(item) for item in value]
-        clean = join_union(values)
+        clean = join_union(*values)
         return list(clean) if isinstance(clean, tuple) else [clean]
 
     if isinstance(value, typing.Mapping):
@@ -186,9 +203,12 @@ def add_schema(
                     add_schema(unique_name, x, schemas)
                     union.append(unique_name)
                 else:
-                    union.append(typing.cast(str, x))
+                    if not isinstance(x, str):
+                        raise ValueError("Found nesting in the raw schema.")
 
-            field["type"] = join_union(union)
+                    union.append(x)
+
+            field["type"] = join_union(*union)
             schema[name] = field
 
         elif isinstance(value, typing.Mapping):

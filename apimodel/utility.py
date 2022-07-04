@@ -1,6 +1,7 @@
 """Utility functions for the library."""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import inspect
 import typing
@@ -70,11 +71,12 @@ def get_slots(cls: object) -> typing.Collection[str]:
     if not isinstance(cls, type):
         cls = cls.__class__
 
-    slots: typing.Set[str] = set()
-    for subclass in cls.mro():
-        slots.update(getattr(subclass, "__slots__", ()))
+    # dict required for ordering
+    slots: typing.Dict[str, None] = {}
+    for subclass in reversed(cls.mro()):
+        slots.update(dict.fromkeys(getattr(subclass, "__slots__", ())))
 
-    return slots
+    return tuple(slots)
 
 
 class Representation:
@@ -124,6 +126,10 @@ class UniversalAsync(typing.Generic[P, T]):
     def __name__(self) -> str:
         return self.callback.__name__
 
+    @property
+    def __signature__(self) -> inspect.Signature:
+        return inspect.signature(self.callback)
+
     def synchronous(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Run the callback synchronously."""
         r = self.callback(*args, **kwargs)
@@ -132,11 +138,11 @@ class UniversalAsync(typing.Generic[P, T]):
 
         with contextlib.closing(r.__await__()) as gen:
             try:
-                gen.send(None)
+                future = gen.send(None)
             except StopIteration as e:
                 return e.value
             else:
-                raise RuntimeError(f"Coroutine {self.callback!r} is not synchronous")
+                raise RuntimeError(f"Coroutine {self.callback!r} is not synchronous.\nReceived {future!r}")
 
     async def asynchronous(self, *args: P.args, **kwargs: P.kwargs) -> T:
         """Run the callback asynchronously."""
@@ -146,10 +152,18 @@ class UniversalAsync(typing.Generic[P, T]):
 
         return await r
 
-    @property
-    def isasync(self) -> bool:
-        """Whether the callback is predictably a coroutine."""
-        return inspect.iscoroutinefunction(self.callback)
+    if not typing.TYPE_CHECKING:
+
+        def __getattribute__(self, name: str) -> typing.Any:
+            """Optimize directly getting asynchronous."""
+            if name in ("synchronous", "asynchronous"):
+                isasync = asyncio.iscoroutinefunction(self.callback)
+                if name == "synchronous" and not isasync and "async" not in self.callback.__name__:
+                    return self.callback
+                if name == "asynchronous" and isasync:
+                    return self.callback
+
+            return super().__getattribute__(name)
 
     def __pretty__(self, fmt: typing.Callable[[object], str], **kwargs: object) -> typing.Iterator[object]:
         """Devtools pretty formatting."""

@@ -90,7 +90,7 @@ def test_literal_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.literal_validator(values).synchronous(model, value) == expected
+    assert apimodel.parser.literal_validator(*values).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(
@@ -198,7 +198,7 @@ def test_typeddict(
     ("validators", "value", "expected"),
     [
         ([apimodel.parser.noop_validator, apimodel.parser.noop_validator], "foo", "foo"),
-        ([apimodel.parser.literal_validator(["foo"]), apimodel.parser.cast_validator(int)], "42", 42),
+        ([apimodel.parser.literal_validator("foo"), apimodel.parser.cast_validator(int)], "42", 42),
     ],
 )
 def test_union_validator(
@@ -207,7 +207,7 @@ def test_union_validator(
     value: object,
     expected: object,
 ) -> None:
-    assert apimodel.parser.union_validator(validators).synchronous(model, value) == expected
+    assert apimodel.parser.union_validator(*validators).synchronous(model, value) == expected
 
 
 @pytest.mark.parametrize(

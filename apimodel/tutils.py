@@ -4,21 +4,22 @@ from __future__ import annotations
 import sys
 import typing
 
-if typing.TYPE_CHECKING:
-    import typing_extensions
+__all__ = ["generic_isinstance", "lenient_issubclass"]
 
-__all__ = ["lenient_issubclass"]
+# ==============================================================================
+# Backwards compatibility imports
+# ==============================================================================
 
-# Combinations of identical types
-if sys.version_info >= (3, 10):
-    from types import NoneType, UnionType
-
-    UnionTypes: typing.Sequence[object] = (typing.Union, UnionType)
-    NoneTypes: typing.Sequence[object] = (None, NoneType)
-
+# GenericAlias
+if sys.version_info >= (3, 9):
+    from types import GenericAlias
 else:
-    UnionTypes: typing.Sequence[object] = (typing.Union,)
-    NoneTypes: typing.Sequence[object] = (None, type(None))
+    from typing import _GenericAlias as GenericAlias  # type: ignore # noqa
+
+
+def _make_generic_alias_factory(name: str, getitem_cls: typing.Callable[..., object]) -> typing.Type[typing.Any]:
+    """Make a generic alias with an output class."""
+    return type(name, (), {"__class_getitem__": lambda cls, *args: getitem_cls(*args)})  # type: ignore
 
 
 # Self
@@ -32,6 +33,28 @@ else:
     except ImportError:
         Self = typing.TypeVar("Self")
 
+# Combinations of identical types
+if sys.version_info >= (3, 10):
+    from types import NoneType, UnionType
+
+    UnionTypes: typing.Sequence[object] = (typing.Union, UnionType)
+    NoneTypes: typing.Sequence[object] = (None, NoneType)
+
+else:
+    UnionTypes: typing.Sequence[object] = (typing.Union,)
+    NoneTypes: typing.Sequence[object] = (None, type(None))
+
+# TypeGuard
+if sys.version_info >= (3, 10):
+    TypeGuard = typing.TypeGuard
+elif typing.TYPE_CHECKING:
+    from typing_extensions import TypeGuard  # type: ignore # noqa
+else:
+    try:
+        from typing_extensions import TypeGuard  # type: ignore # noqa
+    except ImportError:
+        TypeGuard: typing.Type[typing.Any] = _make_generic_alias_factory("TypeGuard", lambda *args: bool)  # type: ignore
+
 # ParamSpec
 if sys.version_info >= (3, 10):
     ParamSpec = typing.ParamSpec
@@ -43,13 +66,8 @@ else:
         from typing_extensions import Concatenate, ParamSpec  # type: ignore # noqa
     except ImportError:
         ParamSpec = typing.TypeVar
-        Concatenate: type = type("Concatenate", (), {"__class_getitem__": lambda cls, *args: list(*args)})  # type: ignore
+        Concatenate: type = _make_generic_alias_factory("Concatenate", list)
 
-# GenericAlias
-if sys.version_info >= (3, 9):
-    from types import GenericAlias
-else:
-    from typing import _GenericAlias as GenericAlias  # type: ignore # noqa
 
 # Annotated and AnnotatedAlias
 if sys.version_info >= (3, 9):
@@ -70,8 +88,12 @@ else:
                 super().__init__(origin, origin)
                 self.__metadata__ = metadata
 
-        Annotated: type = type("Annotated", (), {"__class_getitem__": lambda cls, *args: AnnotatedAlias(*args)})  # type: ignore
+        Annotated: type = _make_generic_alias_factory("Annotated", AnnotatedAlias)
 
+
+# ==============================================================================
+# type definitions
+# ==============================================================================
 
 T = typing.TypeVar("T")
 T1 = typing.TypeVar("T1")
@@ -101,7 +123,7 @@ ValidatorSig = typing.Union[
 ]
 
 
-def lenient_issubclass(obj: object, tp: typing.Type[T]) -> typing_extensions.TypeGuard[typing.Type[T]]:
+def lenient_issubclass(obj: object, tp: typing.Type[T]) -> TypeGuard[typing.Type[T]]:
     """More lenient issubclass."""
     if isinstance(tp, GenericAlias):
         if obj == tp:
@@ -110,3 +132,18 @@ def lenient_issubclass(obj: object, tp: typing.Type[T]) -> typing_extensions.Typ
         tp = tp.__origin__  # type: ignore  # apparently Never
 
     return isinstance(obj, type) and issubclass(obj, tp)
+
+
+def generic_isinstance(
+    obj: object,
+    tp: MaybeSequence[typing.Type[T]],
+    *,
+    exclude: MaybeSequence[typing.Type[object]] = (),
+) -> TypeGuard[T]:
+    """Whether an object is an instance of a generic type."""
+    from . import utility
+
+    include = [typing.get_origin(t) or t for t in utility.flatten_sequences(tp)]
+    exclude = [typing.get_origin(t) or t for t in utility.flatten_sequences(exclude)]
+
+    return any(isinstance(obj, t) for t in include) and not any(isinstance(obj, t) for t in exclude)
