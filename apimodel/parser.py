@@ -12,7 +12,7 @@ from unittest.mock import _Call as Call
 
 from . import apimodel, errors, tutils, utility, validation
 
-__all__ = ["cast", "get_validator", "validate_arguments"]
+__all__ = ["acast", "cast", "get_validator", "validate_arguments"]
 
 T = typing.TypeVar("T")
 
@@ -323,7 +323,7 @@ def tuple_validator(tup: typing.Type[typing.Tuple[object, ...]]) -> AnnotationVa
         else:
             raise TypeError(f"Expected iterable, got {type(value)}")
 
-        items = await model._validate_universal(items)
+        items = await model.validate(items)
 
         if hasattr(tup, "_fields"):
             return tup(**items)
@@ -349,7 +349,7 @@ def typeddict_validator(typeddict: typing.Type[typing.TypedDict]) -> AnnotationV
 
         value = typing.cast("typing.Mapping[str, object]", value)
 
-        return await model._validate_universal(value)
+        return await model.validate(value)
 
     return as_validator(validator, isasync=model.isasync)
 
@@ -453,16 +453,21 @@ def get_validator(tp: object) -> AnnotationValidator:
     raise TypeError(f"Unknown annotation: {tp!r}. Use Annotated[{tp!r}, object] to disable the default validator.")
 
 
-async def cast(tp: typing.Type[T], value: object) -> T:
-    """Cast the value to the given type."""
+# sync is the default since typing.cast() is synchronous too
+# it'd be rare to see a synchronous usage for cast
+
+
+@utility.as_universal
+async def acast(tp: typing.Type[T], value: object) -> T:
+    """Cast the value to the given type asynchronously."""
     validator = get_validator(tp)
     return await validator(apimodel.APIModel({}), value)
 
 
-def cast_sync(tp: typing.Type[T], value: object) -> T:
+def cast(tp: typing.Type[T], value: object) -> T:
     """Cast the value to the given type synchronously."""
-    validator = get_validator(tp)
-    return validator.synchronous(apimodel.APIModel({}), value)
+    # TODO: Report typevar inconsistency to pyright
+    return acast.synchronous(tp, value)  # type: ignore # issues with comprehending TypeVar
 
 
 def validate_arguments(callback: typing.Callable[..., T]) -> typing.Callable[..., T]:

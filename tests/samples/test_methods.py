@@ -47,7 +47,7 @@ def test_get_extras(model: apimodel.APIModel) -> None:
 
 
 def test_validate():
-    assert Model.validate_sync({"string": "foo"}) == {"integer": 0, "string": "foo", "nested": None}
+    assert Model.validate.synchronous({"string": "foo"}) == {"integer": 0, "string": "foo", "nested": None}
 
 
 def test_pretty():

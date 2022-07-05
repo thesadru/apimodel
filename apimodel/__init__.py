@@ -12,6 +12,7 @@ __all__ = [
     "RootValidator",
     "ValidationError",
     "Validator",
+    "acast",
     "cast",
     "generate_models",
     "get_validator",
@@ -25,6 +26,6 @@ from .errors import ValidationError
 from .fields import Extra, Field
 from .generator import generate_models
 from .localization import LocalizedAPIModel
-from .parser import cast, get_validator, validate_arguments
+from .parser import acast, cast, get_validator, validate_arguments
 from .utility import Representation
 from .validation import Order, RootValidator, Validator, root_validator, validator

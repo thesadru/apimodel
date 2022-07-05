@@ -221,7 +221,7 @@ def test_union_validator(
     ],
 )
 def test_cast(tp: type, value: object, expected: object) -> None:
-    assert apimodel.parser.cast_sync(tp, value) == expected
+    assert apimodel.parser.cast(tp, value) == expected
 
 
 def test_validate_arguments() -> None:

@@ -149,18 +149,16 @@ class APIModelMeta(type):
         )
 
     @utility.as_universal_method
-    async def _validate_universal(  # noqa # C901: too complex
+    async def validate(  # noqa # C901: too complex
         self,
         obj: tutils.JSONMapping,
         *,
         instance: typing.Optional[APIModel] = None,
         extras: bool = False,
     ) -> tutils.JSONMapping:
-        """Universal validation.
+        """Validate a mapping.
 
-        This method is used by both sync and async validation.
-        awaits the return values of validators which may potentially be async and expects a resolved value to be sent back.
-
+        Returns the validated mapping.
         If an instance is not passed in, a dummy instance will be created.
         """
         if instance is None:
@@ -242,34 +240,6 @@ class APIModelMeta(type):
         # =============================
         return obj
 
-    def validate_sync(
-        self,
-        obj: tutils.JSONMapping,
-        *,
-        instance: typing.Optional[APIModel] = None,
-        extras: bool = False,
-    ) -> tutils.JSONMapping:
-        """Validate a mapping synchronously.
-
-        Returns the validated mapping.
-        If an instance is not passed in, a dummy instance will be created.
-        """
-        return self._validate_universal.synchronous(obj, instance=instance, extras=extras)
-
-    async def validate(
-        self,
-        obj: tutils.JSONMapping,
-        *,
-        instance: typing.Optional[APIModel] = None,
-        extras: bool = False,
-    ) -> tutils.JSONMapping:
-        """Validate a mapping asynchronously.
-
-        Returns the validated mapping.
-        If an instance is not passed in, a dummy instance will be created.
-        """
-        return await self._validate_universal.asynchronous(obj, instance=instance, extras=extras)
-
 
 class APIModel(utility.Representation, metaclass=APIModelMeta):
     """Base APIModel class."""
@@ -284,17 +254,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     ) -> APIModelT:
         """Create a new model instance.
 
-        All async models should be created using the async factory method.
+        All async models should be created using `APIModel.create` instead.
         """
-        return cls.sync_create(obj, **kwargs)
-
-    @classmethod
-    def sync_create(
-        cls: typing.Type[APIModelT],
-        obj: typing.Optional[object] = None,
-        **kwargs: object,
-    ) -> APIModelT:
-        """Create a new model instance synchronously."""
         if cls.isasync:
             raise TypeError("Must use the create method with an async APIModel.")
 
@@ -302,9 +263,10 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             return obj
 
         self = super().__new__(cls)
-        self.update_model_sync(_to_mapping(obj, **kwargs))
+        self.update_model.synchronous(_to_mapping(obj, **kwargs))
         return self
 
+    # TODO: universal async for classmethods
     @classmethod
     async def create(
         cls: typing.Type[APIModelT],
@@ -319,10 +281,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         await self.update_model(_to_mapping(obj, **kwargs))
         return self
 
-    def update_model_sync(self, obj: tutils.JSONMapping) -> tutils.JSONMapping:
-        """Update a model instance synchronously."""
-        return self.__class__.validate_sync(obj, instance=self, extras=True)
-
+    @utility.as_universal_method
     async def update_model(self, obj: tutils.JSONMapping) -> tutils.JSONMapping:
         """Update a model instance asynchronously."""
         return await self.__class__.validate(obj, instance=self, extras=True)
@@ -391,7 +350,8 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     @classmethod
     def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
         """Get pydantic validators for compatibility."""
-        yield cls.sync_create
+        # TODO: Report lack of **kwargs to pyright
+        yield cls
 
     @classmethod
     def __modify_schema__(cls, field_schema: typing.Dict[str, object]) -> None:

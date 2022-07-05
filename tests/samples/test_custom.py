@@ -7,7 +7,7 @@ class Custom:
 
     @classmethod
     def __validator__(cls, value: object):
-        x = apimodel.parser.cast_sync(int, value)
+        x = apimodel.parser.cast(int, value)
         return cls(x * 2)
 
 
