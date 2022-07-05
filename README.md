@@ -63,9 +63,9 @@ class Attendee(User):
         """Take the entire JSON and update it accordingly"""
         # made for non-standard APIs
         if "attending" in values:
-            values["status"] = "attending" if attending else "absent"
+            values["status"] = "attending" if values["attending"] else "absent"
         elif "interested" in values:
-            values["status"] = "intrested" in values["interested"] else "absent"
+            values["status"] = "interested" if values["interested"] else "absent"
 
         # excess values get thrown away
         return values
