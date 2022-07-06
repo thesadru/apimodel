@@ -8,7 +8,7 @@ from . import parser, tutils, utility, validation
 if typing.TYPE_CHECKING:
     import typing_extensions
 
-__all__ = ["Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo"]
+__all__ = ["Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo", "NamedProperty", "named_property"]
 
 T = typing.TypeVar("T")
 
@@ -138,6 +138,30 @@ class ExtraInfo(utility.Representation):
         self.name = name
 
 
+class NamedProperty(property):
+    """Property with a public name."""
+
+    __slots__ = ("name", "exclude")
+
+    name: str
+    exclude: bool
+
+    def __init__(
+        self,
+        fget: tutils.AnyCallable,
+        fset: typing.Optional[tutils.AnyCallable] = None,
+        fdel: typing.Optional[tutils.AnyCallable] = None,
+        doc: typing.Optional[str] = None,
+        *,
+        name: typing.Optional[str] = None,
+        exclude: bool = False,
+    ) -> None:
+        """Initialize a NamedProperty."""
+        super().__init__(fget, fset, fdel, doc)
+        self.name = name or fget.__name__
+        self.exclude = exclude
+
+
 def Field(
     default: object = ...,
     *,
@@ -161,3 +185,12 @@ def Field(
 def Extra(default: object = ..., name: str = "") -> typing.Any:
     """Create a new ExtraInfo."""
     return ExtraInfo(default, name=name)
+
+
+def named_property(name: typing.Optional[str] = None, *, exclude: bool = False) -> typing.Type[NamedProperty]:
+    """Create a named property."""
+
+    def wrapper(func: tutils.AnyCallable) -> NamedProperty:
+        return NamedProperty(func, name=name, exclude=exclude)
+
+    return typing.cast("typing.Type[NamedProperty]", wrapper)

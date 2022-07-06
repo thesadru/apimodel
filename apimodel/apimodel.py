@@ -57,7 +57,10 @@ class APIModelMeta(type):
     """Fields with their validators."""
 
     __extras__: typing.Mapping[str, fields.ExtraInfo]
-    """Extra values."""
+    """Extra values proxied to all nested models."""
+
+    __properties__: typing.Mapping[str, str]
+    """Instance attributes to be included in the serialized representation."""
 
     __root_validators__: typing.Sequence[validation.RootValidator]
     """Root validators."""
@@ -79,6 +82,7 @@ class APIModelMeta(type):
         self = super().__new__(cls, name, bases, namespace)
         self.__fields__ = {}
         self.__extras__ = {}
+        self.__properties__ = {}
         self.__root_validators__ = []
 
         if field_cls is None:
@@ -105,6 +109,14 @@ class APIModelMeta(type):
             elif isinstance(obj, fields.ExtraInfo):
                 obj.name = obj.name or name.lstrip("_")
                 self.__extras__[name] = obj
+            elif isinstance(obj, property):
+                if isinstance(obj, fields.NamedProperty):
+                    if obj.exclude:
+                        continue
+
+                    self.__properties__[name] = obj.name
+                else:
+                    self.__properties__[name] = name
 
         self.__root_validators__.sort(key=lambda v: v.order)
 
@@ -286,20 +298,6 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         """Update a model instance asynchronously."""
         return await self.__class__.validate(obj, instance=self, extras=True)
 
-    def _get_properties(self, private: bool = False) -> typing.Mapping[str, object]:
-        """Get properties of the model."""
-        properties: typing.Mapping[str, object] = {}
-
-        for name in dir(self.__class__):
-            if not private and name[0] == "_":
-                continue
-
-            cls_object = getattr(self.__class__, name)
-            if isinstance(cls_object, property):
-                properties[name] = getattr(self, name)
-
-        return properties
-
     def as_dict(
         self,
         *,
@@ -326,7 +324,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             obj[field_name] = _serialize_attr(attr, private=private, alias=alias)
 
         if properties:
-            obj.update(self._get_properties())
+            obj.update({name: getattr(self, name) for name in self.__class__.__properties__})
 
         return obj
 
@@ -344,22 +342,24 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
     def __repr_args__(self) -> typing.Mapping[str, object]:
         args: typing.Mapping[str, object] = {}
         args.update({attr: getattr(self, attr) for attr in self.__class__.__fields__})
-        args.update(self._get_properties(private=True))
+        args.update({name: getattr(self, attr_name) for attr_name, name in self.__class__.__properties__.items()})
         return args
 
-    @classmethod
-    def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
-        """Get pydantic validators for compatibility."""
-        # TODO: Report lack of **kwargs to pyright
-        yield cls
+    if not typing.TYPE_CHECKING:
 
-    @classmethod
-    def __modify_schema__(cls, field_schema: typing.Dict[str, object]) -> None:
-        """Create a schema for pydantic."""
-        field_schema.update(
-            type="object",
-            properties={field.name: dict(type="any") for field in cls.__fields__.values() if not field.private},
-        )
+        @classmethod
+        def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
+            """Get pydantic validators for compatibility."""
+            # TODO: Report lack of **kwargs to pyright
+            yield cls
+
+        @classmethod
+        def __modify_schema__(cls, field_schema: typing.Dict[str, object]) -> None:
+            """Create a schema for pydantic."""
+            field_schema.update(
+                type="object",
+                properties={field.name: dict(type="any") for field in cls.__fields__.values() if not field.private},
+            )
 
     @classmethod
     def _empty(cls, freeform: bool = False) -> APIModel:

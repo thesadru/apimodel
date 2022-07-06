@@ -156,6 +156,6 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
             obj[field_name] = value
 
         if properties:
-            obj.update(self._get_properties())
+            obj.update({name: getattr(self, attr_name) for attr_name, name in self.__class__.__properties__.items()})
 
         return obj
