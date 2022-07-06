@@ -141,24 +141,23 @@ class ExtraInfo(utility.Representation):
 class NamedProperty(property):
     """Property with a public name."""
 
-    __slots__ = ("name", "exclude")
-
     name: str
     exclude: bool
 
     def __init__(
         self,
         fget: tutils.AnyCallable,
-        fset: typing.Optional[tutils.AnyCallable] = None,
-        fdel: typing.Optional[tutils.AnyCallable] = None,
-        doc: typing.Optional[str] = None,
         *,
         name: typing.Optional[str] = None,
-        exclude: bool = False,
+        exclude: typing.Optional[bool] = None,
     ) -> None:
         """Initialize a NamedProperty."""
-        super().__init__(fget, fset, fdel, doc)
+        super().__init__(fget)
         self.name = name or fget.__name__
+
+        if exclude is None:
+            exclude = fget.__name__[0] == "_"
+
         self.exclude = exclude
 
 
@@ -187,7 +186,11 @@ def Extra(default: object = ..., name: str = "") -> typing.Any:
     return ExtraInfo(default, name=name)
 
 
-def named_property(name: typing.Optional[str] = None, *, exclude: bool = False) -> typing.Type[NamedProperty]:
+def named_property(
+    name: typing.Optional[str] = None,
+    *,
+    exclude: typing.Optional[bool] = None,
+) -> typing.Type[NamedProperty]:
     """Create a named property."""
 
     def wrapper(func: tutils.AnyCallable) -> NamedProperty:

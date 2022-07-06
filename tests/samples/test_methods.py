@@ -14,6 +14,10 @@ class Inner(apimodel.APIModel):
     def magic(self) -> int:
         return 42
 
+    @apimodel.named_property(exclude=True)
+    def special_magic(self):
+        return "NOT INCLUDED"
+
 
 class Model(apimodel.APIModel):
     _special: object = apimodel.Extra()

@@ -115,7 +115,7 @@ class APIModelMeta(type):
                         continue
 
                     self.__properties__[name] = obj.name
-                else:
+                elif name[0] != "_":
                     self.__properties__[name] = name
 
         self.__root_validators__.sort(key=lambda v: v.order)

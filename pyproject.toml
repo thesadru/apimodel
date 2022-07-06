@@ -15,7 +15,7 @@ line_length = 120
 [tool.slotscheck]
 require-superclass = true
 require-subclass = true
-exclude-classes = ":.*Meta.*"
+exclude-classes = ":.*Meta.*|:.*[Pp]roperty.*"
 exclude-modules = ".*generator.*"
 
 [tool.pytest.ini_options]
