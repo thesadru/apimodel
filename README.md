@@ -72,7 +72,7 @@ class Attendee(User):
 
 class Event(apimodel.APIModel):
     # allow easily renaming fields
-    time: datetime.datetime = apimodel.Field(name="happening_at")
+    time: datetime.datetime = apimodel.Field(alias="happening_at")
     # clean nested models
     attendees: list[User]
 ```

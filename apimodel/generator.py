@@ -17,7 +17,7 @@ RawSchema = typing.Union[
 ]
 
 MaybeUnion = tutils.MaybeSequence[str]
-Field = typing.TypedDict("Field", {"name": str, "type": MaybeUnion, "default": object, "array": bool}, total=False)
+Field = typing.TypedDict("Field", {"alias": str, "type": MaybeUnion, "default": object, "array": bool}, total=False)
 Schema = typing.Mapping[str, Field]
 
 VersionInfo = typing.Union[typing.Tuple[int, ...], "sys._version_info"]
@@ -187,7 +187,7 @@ def add_schema(
 
         name, old_name = to_snake_case(name), name
         if name != old_name:
-            field["name"] = '"' + old_name + '"'
+            field["alias"] = '"' + old_name + '"'
 
         # tuple = union, list = array of union
         if isinstance(value, list):

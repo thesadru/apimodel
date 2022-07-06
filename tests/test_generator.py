@@ -67,14 +67,14 @@ def test_create_schemas(json_data: typing.Any) -> None:
             "timestamp": {"type": "datetime.datetime"},
             "array": {"array": True, "type": "int"},
             "nested": {"type": "Nested"},
-            "nested_array": {"array": True, "type": "NestedArray", "name": '"nestedArray"'},
+            "nested_array": {"array": True, "type": "NestedArray", "alias": '"nestedArray"'},
         },
         "Nested": {
             "string": {"type": "str"},
             "integer": {"type": "int"},
         },
         "NestedArray": {
-            "maybe_float": {"type": ("float", "None"), "name": '"maybeFloat"', "default": "None"},
+            "maybe_float": {"type": ("float", "None"), "alias": '"maybeFloat"', "default": "None"},
             "any": {"type": ("str", "int", "None"), "default": "None"},
         },
     }
@@ -93,7 +93,7 @@ class Nested(apimodel.APIModel):
 
 
 class NestedArray(apimodel.APIModel):
-    maybe_float: float | None = apimodel.Field(None, name="maybeFloat")
+    maybe_float: float | None = apimodel.Field(None, alias="maybeFloat")
     any: str | int | None = None
 
 
@@ -105,6 +105,6 @@ class Root(apimodel.APIModel):
     timestamp: datetime.datetime
     array: list[int]
     nested: Nested
-    nested_array: list[NestedArray] = apimodel.Field(name="nestedArray")
+    nested_array: list[NestedArray] = apimodel.Field(alias="nestedArray")
 """.lstrip()
     assert code == expected

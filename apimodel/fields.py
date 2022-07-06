@@ -142,6 +142,7 @@ def Field(
     default: object = ...,
     *,
     name: typing.Optional[str] = None,
+    alias: typing.Optional[str] = None,
     private: typing.Optional[bool] = None,
     validator: tutils.MaybeSequence[tutils.AnyCallable] = (),
     validators: tutils.MaybeSequence[tutils.AnyCallable] = (),
@@ -150,7 +151,7 @@ def Field(
     """Create a new FieldInfo."""
     return FieldInfo(
         default=default,
-        name=name,
+        name=name or alias,
         private=private,
         validators=utility.flatten_sequences(validator, validators),
         **extra,
