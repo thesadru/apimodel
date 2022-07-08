@@ -181,8 +181,8 @@ def test_namedtuple(
 @pytest.mark.parametrize(
     ("typeddict", "value", "expected"),
     [
-        (typing.TypedDict("NT", x=str, y=int), {"x": 42, "y": "43"}, {"x": "42", "y": 43}),
-        (typing.TypedDict("NT", x=str, y=int, total=False), {"x": 42}, {"x": "42", "y": None}),  # type: ignore # undefined total
+        (typing.TypedDict("NT", {"x": str, "y": int}), {"x": 42, "y": "43"}, {"x": "42", "y": 43}),
+        (typing.TypedDict("NT", {"x": str, "y": int}, total=False), {"x": 42}, {"x": "42", "y": None}),
     ],
 )
 def test_typeddict(

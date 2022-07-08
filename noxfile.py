@@ -83,17 +83,20 @@ def reformat(session: nox.Session) -> None:
     LOGGER.disabled = False
 
 
-@nox.session(name="test")
+@nox.session(name="test", python=["3.8", "3.9", "3.10", "3.11"])
 def test(session: nox.Session) -> None:
     """Run this project's tests using pytest."""
     install_requirements(session, "pytest")
 
-    cov_args: typing.Sequence[str] = []
+    args: typing.Sequence[str] = []
+
+    if isverbose():
+        args += ["-vv", "--showlocals"]
 
     if "--no-cov" in session.posargs:
         session.posargs.remove("--no-cov")
     else:
-        cov_args = [
+        args += [
             "--cov",
             PACKAGE,
             "--cov-report",
@@ -112,11 +115,11 @@ def test(session: nox.Session) -> None:
         "-r",
         "sfE",
         *verbose_args(),
-        *cov_args,
+        *args,
         *session.posargs,
     )
 
-    if cov_args:
+    if "--cov" in args:
         session.log(f"HTML coverage report: {os.path.abspath('coverage_html/index.html')}")
 
 

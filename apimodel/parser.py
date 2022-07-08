@@ -5,9 +5,7 @@ import datetime
 import enum
 import functools
 import inspect
-import sys
 import typing
-import warnings
 from unittest.mock import _Call as Call
 
 from . import apimodel, errors, tutils, utility, validation
@@ -168,18 +166,12 @@ def literal_validator(*args: object) -> AnnotationValidator:
 @debuggable_deco
 def enum_validator(enum_type: typing.Type[enum.Enum]) -> AnnotationValidator:
     """Validate an enum."""
-    if sys.version_info >= (3, 11):
-        warnings.warn("Enums are unstable in python >=3.11.")
-        if issubclass(enum_type, enum.IntEnum):
-            tp = int
-        elif issubclass(enum_type, enum.StrEnum):
-            tp = str
-        else:
-            tp = object
-    elif len(enum_type.__mro__) >= 3 and not tutils.lenient_issubclass(enum_type.__mro__[-3], enum.Enum):
-        tp = enum_type.__mro__[-3]
-    else:
-        tp = object
+    # 3.11 introduces ReprEnum which messes with the mro so we must walk through it
+    tp = object
+    for superclass in enum_type.__mro__:
+        if superclass is not object and not tutils.lenient_issubclass(superclass, enum.Enum):
+            tp = superclass
+            break
 
     try:
         inner_validator = get_validator(tp)
