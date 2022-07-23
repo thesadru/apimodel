@@ -11,7 +11,7 @@ __all__ = ["generic_isinstance", "lenient_issubclass"]
 # ==============================================================================
 
 # GenericAlias
-if sys.version_info >= (3, 9):
+if typing.TYPE_CHECKING:
     from types import GenericAlias
 else:
     from typing import _GenericAlias as GenericAlias  # type: ignore # noqa

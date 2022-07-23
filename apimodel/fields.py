@@ -96,7 +96,14 @@ class ModelFieldInfo(FieldInfo):
     private: bool
 
     @classmethod
-    def from_annotation(cls, name: str, annotation: object, default: object = ...) -> tutils.Self:
+    def from_annotation(
+        cls,
+        name: str,
+        annotation: object,
+        default: object = ...,
+        *,
+        model: typing.Optional[type] = None,
+    ) -> tutils.Self:
         """Create a new model field info from an annotation.
 
         If the default is already a FieldInfo, the data is copied.
@@ -125,7 +132,7 @@ class ModelFieldInfo(FieldInfo):
             except Exception:
                 pass
 
-        validator = parser.get_validator(annotation)
+        validator = parser.get_validator(annotation, model=model)
         validators.append(validator)
 
         return cls(

@@ -79,6 +79,48 @@ def get_slots(cls: object) -> typing.Collection[str]:
     return tuple(slots)
 
 
+def resolve_typevars(cls: type) -> typing.Mapping[str, object]:
+    """Resolve typevar names to types."""
+    typevars: typing.Mapping[str, object] = {}
+
+    orig_bases: typing.Sequence[typing.Any] = getattr(cls, "__orig_bases__", ())
+
+    for base in orig_bases:
+        if not isinstance(base, tutils.GenericAlias):
+            continue
+
+        parameters: typing.Sequence[typing.TypeVar] = getattr(base.__origin__, "__parameters__", ())
+        if not parameters:
+            continue
+
+        args: typing.Sequence[object] = base.__args__
+
+        # requiring typevars to be repeated makes resolving much easier
+        if len(args) != len(parameters):
+            raise TypeError(f"Typevars in {base} must be repeated: {args} X {parameters}")
+
+        for tp, typevar in zip(args, parameters):
+            if typevar.__name__ in typevars:
+                raise TypeError(f"Duplicate typevar: {typevar}")
+
+            typevars[typevar.__name__] = tp
+
+        # unresolved typevars may have been renamed
+        subclass_typevars = resolve_typevars(base.__origin__)
+        for key, tp in subclass_typevars.items():
+            if isinstance(tp, typing.TypeVar):
+                tp = typevars.get(tp.__name__, tp)
+
+            typevars[key] = tp
+
+    # add unresolved typevars
+    parameters = getattr(cls, "__parameters__", ())
+    for typevar in parameters:
+        typevars.setdefault(typevar.__name__, typevar)
+
+    return typevars
+
+
 class Representation:
     """Pydantic's Representation.
 

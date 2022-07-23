@@ -5,6 +5,7 @@ import datetime
 import enum
 import functools
 import inspect
+import types
 import typing
 from unittest.mock import _Call as Call
 
@@ -252,6 +253,13 @@ def mapping_validator(
 @debuggable_deco
 def union_validator(*validators: validation.Validator) -> AnnotationValidator:
     """Return the first successful validator."""
+    if len(validators) == 1:
+        validator = validators[0]
+        if isinstance(validator, AnnotationValidator):
+            return validator
+
+        return as_validator(validator.callback)
+
     # shift None to the start
     new_validators = tuple(
         validator
@@ -277,7 +285,9 @@ def union_validator(*validators: validation.Validator) -> AnnotationValidator:
 @debuggable_deco
 def model_validator(model: typing.Type[apimodel.APIModel]) -> AnnotationValidator:
     """Validate a model."""
-    # TODO: Generics
+    origin = typing.get_origin(model)
+    if origin is not None:
+        model = typing.cast("type[apimodel.APIModel]", types.new_class(origin.__name__, (model,)))
 
     async def validator(root: apimodel.APIModel, value: object) -> object:
         if isinstance(value, model):
@@ -364,32 +374,28 @@ if not typing.TYPE_CHECKING:
         validator.tp = tp
 
 
-def normalize_annotation(tp: object) -> object:
-    """Normalize an annotation and remove aliases."""
-    if tp is type(None):  # noqa: E721
-        tp = None
+def resolve_typevar(tp: typing.TypeVar, *, model: typing.Optional[type] = None) -> object:
+    if model is not None:
+        typevars = utility.resolve_typevars(model)
+        if tp.__name__ not in typevars:
+            raise TypeError(f"Undeclared typevar used: {tp}")
 
-    if isinstance(tp, tutils.AnnotatedAlias):
-        tp = tp.__metadata__[0] if tp.__metadata__ else tp.__origin__  # type: ignore # compatibility with 3.8
+        if not isinstance(typevars[tp.__name__], typing.TypeVar):
+            return typevars[tp.__name__]
 
-    if isinstance(tp, typing.TypeVar):
-        if tp.__bound__:
-            tp = tp.__bound__
-        elif tp.__constraints__:
-            tp = typing.Union[tp.__constraints__]  # type: ignore
-        else:
-            tp = object
-
-    if typing.get_origin(tp) in tutils.UnionTypes:
-        if len(args := typing.get_args(tp)) == 1:
-            tp = normalize_annotation(args[0])
-
-    return tp
+    if tp.__constraints__:
+        return typing.Union[tp.__constraints__]  # type: ignore
+    elif tp.__bound__:
+        return tp.__bound__
+    else:
+        return object
 
 
 def _add_tp(callback: tutils.CallableT) -> tutils.CallableT:
     def wrapper(tp: object, *args: object, **kwargs: object) -> object:
-        tp = normalize_annotation(tp)
+        if isinstance(tp, tutils.AnnotatedAlias):
+            tp = tp.__metadata__[0] if tp.__metadata__ else tp.__origin__  # type: ignore # compatibility with 3.8
+
         r = callback(tp, *args, **kwargs)
         assert isinstance(r, AnnotationValidator)
         r.tp = tp
@@ -400,16 +406,17 @@ def _add_tp(callback: tutils.CallableT) -> tutils.CallableT:
 
 
 @_add_tp
-def get_validator(tp: object) -> AnnotationValidator:
+def get_validator(tp: object, *, model: typing.Optional[type] = None) -> AnnotationValidator:
     """Get a validator for the given type."""
     # TODO: pydantic and dataclasses
+    if isinstance(tp, typing.TypeVar):
+        tp = resolve_typevar(tp, model=model)
 
     origin = typing.get_origin(tp) or tp
     args = typing.get_args(tp)
 
-    # TODO any other forms of unions?
     if origin in tutils.UnionTypes:
-        validators = [get_validator(arg) for arg in args]
+        validators = [get_validator(arg, model=model) for arg in args]
         return union_validator(*validators)
 
     if validator := RAW_VALIDATORS.get(tp):
@@ -419,18 +426,18 @@ def get_validator(tp: object) -> AnnotationValidator:
         return enum_validator(origin)
 
     if tutils.lenient_issubclass(origin, apimodel.APIModel):
-        return model_validator(origin)
+        return model_validator(typing.cast("type[apimodel.APIModel]", tp))
     if tutils.lenient_issubclass(origin, tuple) and (not args or args[-1] != ...):
         return tuple_validator(typing.cast("type[tuple[object, ...]]", tp))
     if tutils.lenient_issubclass(origin, dict) and hasattr(origin, "__annotations__"):
         return typeddict_validator(typing.cast("type[typing.TypedDict]", tp))
 
     if tutils.lenient_issubclass(origin, typing.Mapping):
-        key_validator = get_validator(args[0]) if args else noop_validator
-        value_validator = get_validator(args[1]) if args else noop_validator
+        key_validator = get_validator(args[0], model=model) if args else noop_validator
+        value_validator = get_validator(args[1], model=model) if args else noop_validator
         return mapping_validator(origin, key_validator, value_validator)
     if tutils.lenient_issubclass(origin, typing.Collection):
-        validator = get_validator(args[0]) if args else noop_validator
+        validator = get_validator(args[0], model=model) if args else noop_validator
         return collection_validator(origin, validator)
 
     if origin == typing.Literal:
