@@ -5,9 +5,6 @@ import typing
 
 from . import errors, fields, tutils, utility, validation
 
-if typing.TYPE_CHECKING:
-    import typing_extensions
-
 __all__ = ["APIModel", "APIModelMeta", "create_model"]
 
 ValidatorT = typing.TypeVar("ValidatorT", bound=validation.BaseValidator)
@@ -74,7 +71,7 @@ class APIModelMeta(type):
         field_cls: typing.Optional[typing.Type[fields.ModelFieldInfo]] = None,
         slots: typing.Optional[bool] = None,
         **options: object,
-    ) -> typing_extensions.Self:
+    ) -> tutils.Self:
         """Create a new model class.
 
         Collects all fields and validators.
@@ -107,14 +104,14 @@ class APIModelMeta(type):
                 for field_name in obj._fields:
                     self.__fields__[field_name].add_validators(obj)
             elif isinstance(obj, fields.ExtraInfo):
-                obj.name = obj.name or name.lstrip("_")
+                obj.alias = obj.alias or name.lstrip("_")
                 self.__extras__[name] = obj
             elif isinstance(obj, property):
                 if isinstance(obj, fields.NamedProperty):
                     if obj.exclude:
                         continue
 
-                    self.__properties__[name] = obj.name
+                    self.__properties__[name] = obj.alias
                 elif name[0] != "_":
                     self.__properties__[name] = name
 
@@ -183,12 +180,12 @@ class APIModelMeta(type):
         if extras:
             with errors.catch_errors(self) as catcher:
                 for attr_name, extra in self.__extras__.items():
-                    if extra.name in obj:
-                        setattr(instance, attr_name, obj[extra.name])
+                    if extra.alias in obj:
+                        setattr(instance, attr_name, obj[extra.alias])
                     elif extra.default is not ...:
                         setattr(instance, attr_name, extra.default)
                     else:
-                        catcher.add_error(TypeError(f"Missing required extra field: {extra.name!r}"), loc=attr_name)
+                        catcher.add_error(TypeError(f"Missing required extra field: {extra.alias!r}"), loc=attr_name)
 
         # =============================
         # INITIAL ROOT
@@ -205,12 +202,13 @@ class APIModelMeta(type):
         new_obj: tutils.JSONMapping = {}
 
         for attr_name, field in self.__fields__.items():
-            if field.name not in obj and field.default is not ...:
-                obj[field.name] = field.default
+            default = field._get_default()
+            if field.alias not in obj and default is not ...:
+                obj[attr_name] = default
 
-            if field.name in obj:
-                setattr(instance, attr_name, obj[field.name])
-                new_obj[attr_name] = obj[field.name]
+            if field.alias in obj:
+                setattr(instance, attr_name, obj[field.alias])
+                new_obj[attr_name] = obj[field.alias]
 
         obj = new_obj
 
@@ -226,7 +224,7 @@ class APIModelMeta(type):
         with errors.catch_errors(self) as catcher:
             for attr_name, field in self.__fields__.items():
                 if attr_name not in obj:
-                    catcher.add_error(TypeError(f"Missing required field: {field.name!r}"), loc=attr_name)
+                    catcher.add_error(TypeError(f"Missing required field: {field.alias!r}"), loc=attr_name)
 
         obj = dict(obj)
 
@@ -319,7 +317,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             if field.private and not private:
                 continue
 
-            field_name = field.name if alias else attr_name
+            field_name = field.alias if alias else attr_name
             attr = getattr(self, attr_name)
             obj[field_name] = _serialize_attr(attr, private=private, alias=alias)
 
@@ -333,7 +331,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         obj: typing.Mapping[str, object] = {}
 
         for attr_name, extra in self.__class__.__extras__.items():
-            field_name = extra.name if alias else attr_name
+            field_name = extra.alias if alias else attr_name
             if hasattr(self, attr_name):
                 obj[field_name] = getattr(self, attr_name)
 
@@ -350,7 +348,6 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
         @classmethod
         def __get_validators__(cls) -> typing.Iterator[typing.Callable[..., object]]:
             """Get pydantic validators for compatibility."""
-            # TODO: Report lack of **kwargs to pyright
             yield cls
 
         @classmethod
@@ -358,7 +355,7 @@ class APIModel(utility.Representation, metaclass=APIModelMeta):
             """Create a schema for pydantic."""
             field_schema.update(
                 type="object",
-                properties={field.name: dict(type="any") for field in cls.__fields__.values() if not field.private},
+                properties={field.alias: dict(type="any") for field in cls.__fields__.values() if not field.private},
             )
 
     @classmethod

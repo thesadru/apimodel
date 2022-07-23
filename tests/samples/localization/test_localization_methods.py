@@ -15,7 +15,7 @@ def localize_datetime(dt: datetime.datetime, locale: str) -> str:
 
 
 class User(apimodel.LocalizedAPIModel):
-    username: str = apimodel.Field(name="name")
+    username: str = apimodel.Aliased("name")
     password: str
 
     @property

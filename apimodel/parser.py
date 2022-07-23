@@ -458,7 +458,6 @@ async def acast(tp: typing.Type[T], value: object) -> T:
 
 def cast(tp: typing.Type[T], value: object) -> T:
     """Cast the value to the given type synchronously."""
-    # TODO: Report typevar inconsistency to pyright
     return acast.synchronous(tp, value)  # type: ignore # issues with comprehending TypeVar
 
 

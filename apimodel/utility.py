@@ -169,14 +169,29 @@ class UniversalAsync(typing.Generic[P, T]):
         """Devtools pretty formatting."""
         yield fmt(self.callback)
 
+    @typing.overload
+    def __get__(
+        self: UniversalAsync[P, T],
+        instance: typing.Optional[object],
+        owner: typing.Optional[typing.Type[object]],
+    ) -> UniversalAsync[P, T]:
+        ...
+
+    @typing.overload
     def __get__(
         self: UniversalAsync[tutils.Concatenate[typing.Any, P], T],
-        instance: typing.Optional[object],
-        owner: typing.Type[object],
+        instance: object,
+        owner: typing.Optional[typing.Type[object]],
     ) -> UniversalAsync[P, T]:
-        callback = typing.cast("typing.Callable[P, T]", self.callback.__get__(instance, type(instance)))
+        ...
 
-        return typing.cast("type[UniversalAsync[P, T]]", self.__class__)(callback)
+    def __get__(
+        self,
+        instance: typing.Optional[object],
+        owner: typing.Optional[typing.Type[object]],
+    ) -> UniversalAsync[..., T]:
+        callback = self.callback.__get__(instance, owner)
+        return self.__class__(callback)
 
 
 def as_universal(callback: typing.Callable[P, tutils.MaybeAwaitable[T]]) -> UniversalAsync[P, T]:

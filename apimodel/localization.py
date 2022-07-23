@@ -6,9 +6,6 @@ import typing
 
 from . import apimodel, fields, tutils
 
-if typing.TYPE_CHECKING:
-    import typing_extensions
-
 __all__ = ["LocalizedAPIModel", "LocalizedAPIModelMeta", "LocalizedFieldInfo"]
 
 
@@ -27,7 +24,7 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
         self,
         default: object = ...,
         *,
-        name: typing.Optional[str] = None,
+        alias: typing.Optional[str] = None,
         private: typing.Optional[bool] = False,
         validators: tutils.MaybeSequence[tutils.AnyCallable] = ...,
         i18n: typing.Optional[typing.Union[str, typing.Mapping[str, str]]] = None,
@@ -43,7 +40,7 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
 
         super().__init__(
             default,
-            name=name,
+            alias=alias,
             private=private,
             validators=validators,
             **extra,
@@ -56,10 +53,10 @@ class LocalizedFieldInfo(fields.ModelFieldInfo):
         name: typing.Optional[str] = None,
     ) -> str:
         """Get the localized name of the field."""
-        i18n = self.i18n or name or self.name
+        i18n = self.i18n or name or self.alias
 
         if isinstance(i18n, str):
-            return provider[locale].get(i18n, name or self.name)
+            return provider[locale].get(i18n, name or self.alias)
 
         return i18n[locale]
 
@@ -95,13 +92,13 @@ class LocalizedAPIModelMeta(apimodel.APIModelMeta):
         *,
         field_cls: typing.Optional[typing.Type[LocalizedFieldInfo]] = None,
         **options: object,
-    ) -> typing_extensions.Self:
+    ) -> tutils.Self:
         """Create a new model class.
 
         Collects all fields and validators.
         """
         self = super().__new__(cls, name, bases, namespace, field_cls=field_cls or LocalizedFieldInfo, **options)
-        self = typing.cast("typing_extensions.Self", self)
+        self = typing.cast("tutils.Self", self)
 
         return self
 
@@ -143,7 +140,7 @@ class LocalizedAPIModel(apimodel.APIModel, metaclass=LocalizedAPIModelMeta):
             if field.private and not private:
                 continue
 
-            field_name = field.name if alias else attr_name
+            field_name = field.alias if alias else attr_name
 
             if locale is not None and alias is not False:
                 field_name = field.get_localized_name(self.__class__.i18n, locale, name=field_name)

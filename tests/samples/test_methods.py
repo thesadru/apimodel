@@ -24,6 +24,7 @@ class Model(apimodel.APIModel):
 
     integer: int = 0
     string: str = ""
+    array: typing.List[str] = apimodel.Field(default_factory=list)
 
     nested: typing.Optional[Inner] = None
 
@@ -43,7 +44,12 @@ def model():
 
 
 def test_as_dict(model: apimodel.APIModel) -> None:
-    assert model.as_dict() == {"integer": 0, "string": "foo", "nested": {"required": 24, "optional": None, "magic": 42}}
+    assert model.as_dict() == {
+        "integer": 0,
+        "string": "foo",
+        "array": [],
+        "nested": {"required": 24, "optional": None, "magic": 42},
+    }
 
 
 def test_get_extras(model: apimodel.APIModel) -> None:
@@ -51,7 +57,12 @@ def test_get_extras(model: apimodel.APIModel) -> None:
 
 
 def test_validate():
-    assert Model.validate.synchronous({"string": "foo"}) == {"integer": 0, "string": "foo", "nested": None}
+    assert Model.validate.synchronous({"string": "foo", "array": (1, 2)}) == {
+        "integer": 0,
+        "string": "foo",
+        "array": ["1", "2"],
+        "nested": None,
+    }
 
 
 def test_pretty():
@@ -59,4 +70,4 @@ def test_pretty():
     gen: typing.Iterator[object] = Model.__pretty__(fmt)  # type: ignore
 
     assert list(gen)
-    assert fmt.call_count == 6  # extra, 2 attrs, 1 nest, 2 nested attrs
+    assert fmt.call_count == 7  # extra, 3 attrs, 1 nest, 2 nested attrs

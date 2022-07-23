@@ -5,10 +5,7 @@ import typing
 
 from . import parser, tutils, utility, validation
 
-if typing.TYPE_CHECKING:
-    import typing_extensions
-
-__all__ = ["Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo", "NamedProperty", "named_property"]
+__all__ = ["Aliased", "Extra", "ExtraInfo", "Field", "FieldInfo", "ModelFieldInfo", "NamedProperty", "named_property"]
 
 T = typing.TypeVar("T")
 
@@ -17,15 +14,18 @@ T = typing.TypeVar("T")
 class FieldInfo(utility.Representation):
     """Basic information about a field."""
 
-    __slots__ = ("default", "name", "private", "validators", "extra")
+    __slots__ = ("default", "default_factory", "alias", "private", "validators", "extra")
 
     default: object
     """The default value of the field."""
 
-    name: typing.Optional[str]
+    default_factory: typing.Optional[typing.Callable[[], object]]
+    """Factory for the default value in case of mutables."""
+
+    alias: typing.Optional[str]
     """Key name in the JSON object. Similar to pydantic's alias.
 
-    The attribute name by default
+    The attribute name by default.
     """
 
     private: typing.Optional[bool]
@@ -47,7 +47,8 @@ class FieldInfo(utility.Representation):
         self,
         default: object = ...,
         *,
-        name: typing.Optional[str] = None,
+        default_factory: typing.Optional[typing.Callable[[], object]] = None,
+        alias: typing.Optional[str] = None,
         private: typing.Optional[bool] = False,
         validators: tutils.MaybeSequence[tutils.AnyCallable] = (),
         **extra: typing.Any,
@@ -57,7 +58,8 @@ class FieldInfo(utility.Representation):
         Extra arguments may be repurposed for subclass attributes.
         """
         self.default = default
-        self.name = name
+        self.default_factory = default_factory
+        self.alias = alias
         self.private = private
         self.extra = extra
 
@@ -74,32 +76,47 @@ class FieldInfo(utility.Representation):
 
         self.validators.sort(key=lambda v: v.order)
 
+    def _get_default(self) -> object:
+        """Get the default value of the field.
+
+        Returns Ellipsis if not available.
+        """
+        if self.default_factory is not None:
+            return self.default_factory()
+
+        return self.default
+
 
 class ModelFieldInfo(FieldInfo):
     """Complete information about a field."""
 
     __slots__ = ()
 
-    name: str
+    alias: str
     private: bool
 
     @classmethod
-    def from_annotation(cls, name: str, annotation: object, default: object = ...) -> typing_extensions.Self:
+    def from_annotation(cls, name: str, annotation: object, default: object = ...) -> tutils.Self:
         """Create a new model field info from an annotation.
 
         If the default is already a FieldInfo, the data is copied.
         """
+        default_factory: typing.Optional[typing.Callable[[], object]] = None
         validators: typing.Sequence[validation.Validator] = []
         private: bool = name[0] == "_"
         extra: typing.Mapping[str, typing.Any] = {}
+        alias: str = name
 
         if isinstance(default, FieldInfo):
-            name = default.name or name
-            private = default.private if default.private is not None else private
-            extra = default.extra
-            validators.extend(default.validators)
+            field = default
 
-            default = default.default
+            default_factory = field.default_factory
+            alias = field.alias or name
+            private = field.private if field.private is not None else private
+            extra = field.extra
+            validators.extend(field.validators)
+
+            default = field.default
 
         # not done by default on newer version of python
         if default is None:
@@ -111,7 +128,14 @@ class ModelFieldInfo(FieldInfo):
         validator = parser.get_validator(annotation)
         validators.append(validator)
 
-        return cls(default, name=name, private=private, validators=validators, **extra)
+        return cls(
+            default,
+            default_factory=default_factory,
+            alias=alias,
+            private=private,
+            validators=validators,
+            **extra,
+        )
 
     @property
     def annotation_validator(self) -> parser.AnnotationValidator:
@@ -127,33 +151,33 @@ class ModelFieldInfo(FieldInfo):
 class ExtraInfo(utility.Representation):
     """Descriptor for a special extra attribute."""
 
-    __slots__ = ("default", "name")
+    __slots__ = ("default", "alias")
 
     default: object
-    name: str
+    alias: str
 
-    def __init__(self, default: object = ..., name: str = "") -> None:
+    def __init__(self, default: object = ..., *, alias: str = "") -> None:
         """Initialize an ExtraInfo."""
         self.default = default
-        self.name = name
+        self.alias = alias
 
 
 class NamedProperty(property):
     """Property with a public name."""
 
-    name: str
+    alias: str
     exclude: bool
 
     def __init__(
         self,
         fget: tutils.AnyCallable,
         *,
-        name: typing.Optional[str] = None,
+        alias: typing.Optional[str] = None,
         exclude: typing.Optional[bool] = None,
     ) -> None:
         """Initialize a NamedProperty."""
         super().__init__(fget)
-        self.name = name or fget.__name__
+        self.alias = alias or fget.__name__
 
         if exclude is None:
             exclude = fget.__name__[0] == "_"
@@ -164,7 +188,7 @@ class NamedProperty(property):
 def Field(
     default: object = ...,
     *,
-    name: typing.Optional[str] = None,
+    default_factory: typing.Optional[typing.Callable[[], object]] = None,
     alias: typing.Optional[str] = None,
     private: typing.Optional[bool] = None,
     validator: tutils.MaybeSequence[tutils.AnyCallable] = (),
@@ -174,26 +198,48 @@ def Field(
     """Create a new FieldInfo."""
     return FieldInfo(
         default=default,
-        name=name or alias,
+        default_factory=default_factory,
+        alias=alias,
         private=private,
         validators=utility.flatten_sequences(validator, validators),
         **extra,
     )
 
 
-def Extra(default: object = ..., name: str = "") -> typing.Any:
+def Extra(default: object = ..., alias: str = "") -> typing.Any:
     """Create a new ExtraInfo."""
-    return ExtraInfo(default, name=name)
+    return ExtraInfo(default, alias=alias)
+
+
+def Aliased(
+    alias: str,
+    *,
+    default: object = ...,
+    default_factory: typing.Optional[typing.Callable[[], object]] = None,
+    private: typing.Optional[bool] = None,
+    validator: tutils.MaybeSequence[tutils.AnyCallable] = (),
+    validators: tutils.MaybeSequence[tutils.AnyCallable] = (),
+    **extra: typing.Any,
+) -> typing.Any:
+    """Create a new FieldInfo with an alias as the first argument."""
+    return FieldInfo(
+        default=default,
+        default_factory=default_factory,
+        alias=alias,
+        private=private,
+        validators=utility.flatten_sequences(validator, validators),
+        **extra,
+    )
 
 
 def named_property(
-    name: typing.Optional[str] = None,
+    alias: typing.Optional[str] = None,
     *,
     exclude: typing.Optional[bool] = None,
 ) -> typing.Type[NamedProperty]:
     """Create a named property."""
 
     def wrapper(func: tutils.AnyCallable) -> NamedProperty:
-        return NamedProperty(func, name=name, exclude=exclude)
+        return NamedProperty(func, alias=alias, exclude=exclude)
 
     return typing.cast("typing.Type[NamedProperty]", wrapper)

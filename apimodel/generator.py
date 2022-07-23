@@ -136,7 +136,7 @@ def join_union(*raw_values: T) -> tutils.MaybeTuple[T]:
     """
     values = utility.flatten_sequences(raw_values)
     values = tuple({repr(tp): tp for tp in values}.values())
-    if "float" in values:
+    if "float" in values:  # pyright: ignore[reportUnnecessaryContains]  # pyright bug
         values = tuple(x for x in values if x != "int")
 
     if values and all(isinstance(value, typing.Mapping) for value in values):

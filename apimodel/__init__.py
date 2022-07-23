@@ -4,6 +4,7 @@ Provides tools for extensive converting.
 """
 __all__ = [
     "APIModel",
+    "Aliased",
     "Extra",
     "Field",
     "LocalizedAPIModel",
@@ -24,7 +25,7 @@ __all__ = [
 
 from .apimodel import APIModel
 from .errors import ValidationError
-from .fields import Extra, Field, named_property
+from .fields import Aliased, Extra, Field, named_property
 from .generator import generate_models
 from .localization import LocalizedAPIModel
 from .parser import acast, cast, get_validator, validate_arguments
